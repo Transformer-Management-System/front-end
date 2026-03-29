@@ -215,7 +215,7 @@ function App() {
   
   return (
     <div className="app">
-      <Sidebar setActivePage={setActivePage} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} />
       <div className="content">
         {activePage === "page2" ? (
           <SettingsPage />

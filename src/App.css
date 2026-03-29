@@ -1,93 +1,250 @@
-/* === GENERAL LAYOUT === */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body, #root {
-  height: 100%;
-  font-family: Arial, sans-serif;
-  background-color: #f9f9f9;
-  color: #333;
-}
-
-h1, h2, h3, h4 {
-  margin: 0 0 10px 0;
-  font-weight: bold;
-}
-
-button {
-  cursor: pointer;
-  transition: background 0.3s, color 0.3s;
-  border: none;
-  border-radius: 5px;
-}
-
-/* === APP LAYOUT === */
+/* === APP SHELL === */
 .app {
-  display: flex;            
-  height: 100vh;            
+  display: flex;
   width: 100%;
+  min-height: 100%;
+  background: var(--bg-page);
 }
-
-
 
 .content {
-  flex-grow: 1;             
-  padding: 20px;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 32px;
   overflow-y: auto;
+  background: var(--bg-page);
 }
 
-
-
-
-/* === INSPECTION LIST === */
-.schedule-btn {
-  background-color: #02090fff;
-  color: white;
-  padding: 10px 20px;
-  margin-bottom: 20px;
+.content > * {
+  width: 100%;
 }
 
-.schedule-btn:hover {
-  background-color: rgb(0, 4, 250);
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-primary);
 }
 
-.inspection-table {
+/* === CONTROLS === */
+button {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.search-bar,
+.search-container,
+.inspection-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input,
+.search-select,
+.inspection-search-input,
+.inspection-search-select,
+.modal-content input,
+.modal-content select,
+.modal-content textarea {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.modal-content textarea {
+  min-height: 90px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  resize: vertical;
+}
+
+.search-input:focus,
+.search-select:focus,
+.inspection-search-input:focus,
+.inspection-search-select:focus,
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.add-transformer-btn,
+.schedule-btn,
+.save-btn,
+.inspection-save-btn,
+.analysis-btn,
+.upload-btn {
+  background: var(--brand);
+  color: #ffffff;
+  border: 1px solid var(--brand);
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.add-transformer-btn:hover,
+.schedule-btn:hover,
+.save-btn:hover,
+.inspection-save-btn:hover,
+.analysis-btn:hover,
+.upload-btn:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.cancel-btn,
+.inspection-cancel-btn {
+  background: #e2e8f0;
+  color: #1f2937;
+  border: 1px solid #cbd5e1;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cancel-btn:hover,
+.inspection-cancel-btn:hover {
+  background: #cbd5e1;
+}
+
+/* === COMMON ACTION BUTTONS === */
+.inspection-btn,
+.transformer-actions button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 0;
+}
+
+.view-btn,
+.edit-btn {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.view-btn:hover,
+.edit-btn:hover {
+  background: #dbeafe;
+}
+
+.delete-btn,
+.danger-btn {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.delete-btn:hover,
+.danger-btn:hover {
+  background: #fecaca;
+}
+
+/* === INSPECTION SUMMARY TABLE === */
+.inspection-list-container {
+  width: 100%;
+}
+
+.inspection-list-card {
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.09);
+  padding: 20px;
+}
+
+.inspection-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.inspection-search-select {
+  min-width: 170px;
+}
+
+.inspection-search-input {
+  min-width: 220px;
+  flex: 1;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.inspection-summary-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: white;
+  background: var(--surface);
 }
 
-.inspection-table th,
-.inspection-table td {
-  border: 1px solid #ddd;
-  padding: 10px;
+.inspection-summary-table thead th {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-align: left;
+  white-space: nowrap;
 }
 
-/* === SEARCH CONTAINERS === */
-.search-bar, .search-container {
+.inspection-summary-table tbody td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #e8edf3;
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.inspection-summary-table tbody tr:hover {
+  background: #f8fbff;
+}
+
+.inspection-actions {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.search-input, .search-select {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+.table-empty {
+  text-align: center;
+  padding: 22px;
+  color: var(--text-muted);
 }
 
 /* === MODALS === */
 .modal {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.5);
+  background: rgba(2, 6, 23, 0.46);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -95,229 +252,75 @@ button {
 }
 
 .modal-content {
-  background: white;
-  padding: 30px;
-  border-radius: 10px;
-  width: 400px;
-  max-width: 95%;
+  width: min(480px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
+  padding: 24px;
 }
 
 .modal-content h2,
 .modal-content h3 {
-  margin-bottom: 10px;
+  margin: 0 0 14px;
+  color: var(--text-primary);
 }
 
-.modal-content input,
-.modal-content select,
-.modal-content textarea {
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.modal-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.save-btn {
-  background-color: #2b95dbff;
-  color: white;
-  padding: 8px 16px;
-}
-
-.save-btn:hover {
-  background-color: #1a6ca2ff;
-}
-
-.cancel-btn {
-  background-color: #ccc;
-  color: black;
-  padding: 8px 16px;
-}
-
-.cancel-btn:hover {
-  background-color: #999;
-}
-
-/* === IMAGE PREVIEW === */
-.image-preview {
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  margin-bottom: 10px;
-}
-
-/* === DANGER BUTTON === */
-.danger-btn {
-  background-color: #d9534f;
-  color: white;
-  padding: 5px 10px;
-  border-radius: 5px;
-}
-
-.danger-btn:hover {
-  background-color: #b52b27;
-}
-
-
-
-/* Transformer Table Header */
-.transformer-table thead {
-  background-color: #000; /* black background */
-  color: white;           /* white text for contrast */
-}
-
-.transformer-table thead th {
-  padding: 12px;          /* a bit more padding */
-  text-align: left;
-}
-
-
-/*schdule inspection button */
-.schedule-btn {
-  padding: 10px 20px;
-  margin-bottom: 20px;
-  background-color: #02090fff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer; /* optional for pointer cursor */
-  transition: background 0.3s; /* optional hover effect */
-}
-
-.schedule-btn:hover {
-  background-color: rgb(0, 4, 250); /* darker on hover */
-}
-
-/*inspection save and cancel buttons*/
-
-.inspector-save-btn {
-  padding: 8px 15px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.inspector-save-btn:hover {
-  background-color: #0056b3; 
-}
-
-.inspector-close-btn {
-  padding: 8px 15px;
-  background-color: #0b5697; 
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.inspector-close-btn:hover {
-  background-color: #565e64; 
-}
-
-
-/* add inspection save cancel buttons */
+.modal-buttons,
 .inspection-modal-buttons {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
+  margin-top: 12px;
 }
 
-.inspection-save-btn {
-  padding: 8px 16px;
-  background-color: #007bff; /* blue */
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s;
+/* === STATUS PILLS === */
+.status-pending,
+.status-inprogress,
+.status-completed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
 }
-
-.inspection-save-btn:hover {
-  background-color: #0056b3; /* darker blue on hover */
-}
-
-.inspection-cancel-btn {
-  padding: 8px 16px;
-  background-color: #6c757d; /* gray */
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.inspection-cancel-btn:hover {
-  background-color: #5a6268; /* darker gray on hover */
-}
-
-/* pending colum style*/
 
 .status-pending {
-  color: white;
-  background-color: rgb(211, 108, 108);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: bold;
-  text-align: center;
+  background: #ef4444;
 }
 
 .status-inprogress {
-  color: white;
-  background-color: rgb(91, 189, 91); /* green tone */
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: bold;
-  text-align: center;
+  background: #f59e0b;
 }
 
 .status-completed {
-  color: white;
-  background-color: green;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: bold;
-  text-align: center;
+  background: #16a34a;
 }
 
-/*inspection table buttons style*/
-
-.inspection-btn {
-  padding: 5px 12px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-  margin-right: 5px;
-  transition: all 0.2s ease;
+@media (max-width: 1024px) {
+  .content {
+    padding: 20px;
+  }
 }
 
-/* View button - blue */
-.view-btn {
-  background-color: black;
-  color: white;
-}
+@media (max-width: 768px) {
+  .content {
+    padding: 16px;
+  }
 
-.view-btn:hover {
-  background-color: rgb(0, 4, 250);
-}
+  .inspection-list-card {
+    padding: 14px;
+  }
 
-/* Delete button - red */
-.delete-btn {
-  background-color: black;
-  color: white;
-}
-
-.delete-btn:hover {
-  background-color: rgb(0, 4, 250);
+  .search-input,
+  .inspection-search-input {
+    min-width: 100%;
+  }
 }
