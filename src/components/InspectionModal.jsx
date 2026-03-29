@@ -1,3 +1,5 @@
+import "../styles/InspectionModal.css";
+
 export default function InspectionModal({
   transformers,
   inspectionForm,
@@ -6,63 +8,87 @@ export default function InspectionModal({
   onClose,
   disableTransformerSelect = false, // <-- new prop to control dropdown
 }) {
+  const isFormValid =
+    Boolean(inspectionForm.transformer) &&
+    Boolean(inspectionForm.date) &&
+    Boolean(inspectionForm.inspector);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    handleScheduleInspection();
+  };
+
   return (
-    <div className="modal">
-      <div className="modal-content">
+    <div className="modal inspection-modal-overlay">
+      <div className="modal-content inspection-modal-card">
         <h2>Schedule Inspection</h2>
 
-        <label>
-          Transformer:
-          <select
-            name="transformer"
-            value={inspectionForm.transformer}
-            onChange={handleInspectionChange}
-            disabled={disableTransformerSelect} // <-- controlled by prop
-          >
-            <option value="">Select Transformer</option>
-            {transformers.map((t) => (
-              <option key={t.id} value={t.id}>{t.number}</option>
-            ))}
-          </select>
-        </label>
+        <form className="inspection-modal-form" onSubmit={handleSubmit}>
+          <div className="inspection-modal-grid">
+            <div className="inspection-field-group">
+              <label htmlFor="inspection-transformer">Transformer</label>
+              <select
+                id="inspection-transformer"
+                name="transformer"
+                value={inspectionForm.transformer}
+                onChange={handleInspectionChange}
+                disabled={disableTransformerSelect} // <-- controlled by prop
+              >
+                <option value="">Select Transformer</option>
+                {transformers.map((transformer) => (
+                  <option key={transformer.id} value={transformer.id}>{transformer.number}</option>
+                ))}
+              </select>
+            </div>
 
-        <label>
-          Date:
-          <input
-            type="date"
-            name="date"
-            value={inspectionForm.date}
-            onChange={handleInspectionChange}
-          />
-        </label>
+            <div className="inspection-field-group">
+              <label htmlFor="inspection-date">Date</label>
+              <input
+                id="inspection-date"
+                type="date"
+                name="date"
+                value={inspectionForm.date}
+                onChange={handleInspectionChange}
+              />
+            </div>
 
-        <label>
-          Inspector:
-          <input
-            type="text"
-            name="inspector"
-            value={inspectionForm.inspector}
-            onChange={handleInspectionChange}
-          />
-        </label>
+            <div className="inspection-field-group">
+              <label htmlFor="inspection-inspector">Inspector</label>
+              <input
+                id="inspection-inspector"
+                type="text"
+                name="inspector"
+                placeholder="Enter inspector name"
+                value={inspectionForm.inspector}
+                onChange={handleInspectionChange}
+              />
+            </div>
 
-        <label>
-          Notes:
-          <textarea
-            name="notes"
-            value={inspectionForm.notes}
-            onChange={handleInspectionChange}
-          />
-        </label>
+            <div className="inspection-field-group inspection-field-span-two">
+              <label htmlFor="inspection-notes">Notes</label>
+              <textarea
+                id="inspection-notes"
+                name="notes"
+                placeholder="Optional maintenance notes"
+                value={inspectionForm.notes}
+                onChange={handleInspectionChange}
+              />
+            </div>
+          </div>
 
-        <div className="modal-buttons">
-          <button className="inspection-save-btn" onClick={handleScheduleInspection}>
-            Add Inspection
-          </button>
-          <button className="inspection-cancel-btn" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
+          {!isFormValid && (
+            <p className="inspection-modal-error">Please select a transformer, date, and inspector.</p>
+          )}
+
+          <div className="modal-buttons inspection-modal-actions">
+            <button type="button" className="inspection-cancel-btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="inspection-save-btn" disabled={!isFormValid}>
+              Add Inspection
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

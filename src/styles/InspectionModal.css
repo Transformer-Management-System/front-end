@@ -1,0 +1,147 @@
+.inspection-modal-overlay {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.inspection-modal-card {
+  width: min(680px, 94vw);
+  max-height: 92vh;
+  border-radius: 14px;
+  padding: 28px;
+}
+
+.inspection-modal-card h2 {
+  margin: 0 0 18px;
+  font-size: 24px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.inspection-modal-form {
+  width: 100%;
+}
+
+.inspection-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.inspection-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inspection-field-group label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.inspection-field-group input,
+.inspection-field-group select,
+.inspection-field-group textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-size: 14px;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.04);
+}
+
+.inspection-field-group input,
+.inspection-field-group select {
+  height: 42px;
+  padding: 0 12px;
+}
+
+.inspection-field-group textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.inspection-field-group input:focus,
+.inspection-field-group select:focus,
+.inspection-field-group textarea:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+.inspection-field-group select:disabled {
+  background: #f1f5f9;
+  color: #334155;
+  cursor: not-allowed;
+}
+
+.inspection-field-span-two {
+  grid-column: 1 / -1;
+}
+
+.inspection-modal-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.inspection-modal-actions {
+  margin-top: 18px;
+}
+
+.inspection-modal-actions .inspection-cancel-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+.inspection-modal-actions .inspection-cancel-btn:hover {
+  background: #f8fafc;
+}
+
+.inspection-modal-actions .inspection-save-btn {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #ffffff;
+}
+
+.inspection-modal-actions .inspection-save-btn:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.inspection-modal-actions .inspection-save-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .inspection-modal-card {
+    width: min(620px, 96vw);
+    padding: 18px;
+  }
+
+  .inspection-modal-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .inspection-field-span-two {
+    grid-column: auto;
+  }
+
+  .inspection-modal-actions {
+    justify-content: stretch;
+  }
+
+  .inspection-modal-actions .inspection-cancel-btn,
+  .inspection-modal-actions .inspection-save-btn {
+    flex: 1;
+  }
+}
