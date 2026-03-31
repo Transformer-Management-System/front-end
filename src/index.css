@@ -48,3 +48,7 @@ a {
 a:hover {
   color: var(--brand-hover);
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

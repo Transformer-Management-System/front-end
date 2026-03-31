@@ -8,12 +8,14 @@ import InspectionModal from "./components/InspectionModal";
 import InspectionViewModal from "./components/InspectionViewModal";
 import TransformerInspectionsPage from "./components/TransformerInspectionsPage";
 import SettingsPage from "./components/SettingsPage";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { useAuth } from "./context/AuthContext";
+import apiClient from "./api/axiosConfig";
 
 import "./App.css";
 
-const API_URL = "http://localhost:8000/api";
-
 function App() {
+  const { logout } = useAuth();
   const [activePage, setActivePage] = useState("page1");
   const [activeTab, setActiveTab] = useState("details");
 
@@ -60,13 +62,11 @@ function App() {
     const fetchData = async () => {
       try {
         const [transformersRes, inspectionsRes] = await Promise.all([
-          fetch(`${API_URL}/transformers`),
-          fetch(`${API_URL}/inspections`),
+          apiClient.get('/transformers'),
+          apiClient.get('/inspections'),
         ]);
-        const transformersData = await transformersRes.json();
-        const inspectionsData = await inspectionsRes.json();
-        setTransformers(transformersData);
-        setInspections(inspectionsData);
+        setTransformers(transformersRes.data);
+        setInspections(inspectionsRes.data);
       } catch (error) {
         console.error("Failed to fetch data from backend:", error);
         alert("Could not connect to the backend. Please ensure it is running.");
@@ -122,12 +122,7 @@ function App() {
 
   const handleAddTransformer = async () => {
     try {
-      const response = await fetch(`${API_URL}/transformers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transformerForm),
-      });
-      const savedTransformer = await response.json();
+      const { data: savedTransformer } = await apiClient.post('/transformers', transformerForm);
       setTransformers(prev => {
         const exists = prev.some(t => t.id === savedTransformer.id);
         if (exists) {
@@ -144,12 +139,8 @@ function App() {
 
   const handleDeleteTransformer = async (transformerId) => {
     try {
-      const response = await fetch(`${API_URL}/transformers/${transformerId}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        setTransformers(prev => prev.filter(t => t.id !== transformerId));
-      }
+      await apiClient.delete(`/transformers/${transformerId}`);
+      setTransformers(prev => prev.filter(t => t.id !== transformerId));
     } catch (error) {
       console.error("Failed to delete transformer:", error);
     }
@@ -172,12 +163,7 @@ function App() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/inspections`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newInspectionData),
-      });
-      const savedInspection = await response.json();
+      const { data: savedInspection } = await apiClient.post('/inspections', newInspectionData);
       setInspections(prev => [...prev, savedInspection]);
       setShowAddInspectionModal(false);
       setInspectionForm({ transformer: "", date: "", inspector: "", notes: "", maintenanceImage: null, maintenanceUploadDate: null, maintenanceWeather: "Sunny" });
@@ -188,12 +174,8 @@ function App() {
 
   const handleDeleteInspection = async (inspectionId) => {
     try {
-      const response = await fetch(`${API_URL}/inspections/${inspectionId}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        setInspections(prev => prev.filter(i => i.id !== inspectionId));
-      }
+      await apiClient.delete(`/inspections/${inspectionId}`);
+      setInspections(prev => prev.filter(i => i.id !== inspectionId));
     } catch (error) {
       console.error("Failed to delete inspection:", error);
     }
@@ -201,11 +183,11 @@ function App() {
 
   const handleViewInspection = (inspection) => { setViewInspectionData(inspection); setShowViewInspectionModal(true); };
   const handleUpdateInspection = async (updatedInspection) => {
-    await fetch(`${API_URL}/inspections/${updatedInspection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedInspection) });
+    await apiClient.put(`/inspections/${updatedInspection.id}`, updatedInspection);
     setInspections(inspections.map(i => (i.id === updatedInspection.id ? updatedInspection : i)));
   };
   const handleUpdateTransformer = async (updatedTransformer) => {
-    await fetch(`${API_URL}/transformers`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedTransformer) });
+    await apiClient.post('/transformers', updatedTransformer);
     setTransformers(prev => prev.map(t => (t.id === updatedTransformer.id ? updatedTransformer : t)));
   };
 
@@ -214,8 +196,9 @@ function App() {
   const handleBackToMain = () => { setSelectedTransformerForPage(null); setShowTransformerInspectionsPage(false); };
   
   return (
+    <ProtectedRoute>
     <div className="app">
-      <Sidebar activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={logout} />
       <div className="content">
         {activePage === "page2" ? (
           <SettingsPage />
@@ -299,6 +282,7 @@ function App() {
         />
       )}
     </div>
+    </ProtectedRoute>
   );
 }
 

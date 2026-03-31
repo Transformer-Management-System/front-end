@@ -1,7 +1,7 @@
 import corefourLogo from "../assets/corefour.jpg";
 import "../styles/Sidebar.css"
 
-export default function Sidebar({ activePage, setActivePage }) {
+export default function Sidebar({ activePage, setActivePage, onLogout }) {
   return (
     <div className="sidebar">
       <div className="sidebar-logo">
@@ -20,6 +20,14 @@ export default function Sidebar({ activePage, setActivePage }) {
         onClick={() => setActivePage("page2")}
       >
         Settings
+      </button>
+
+      <button
+        className="logout-btn"
+        onClick={onLogout}
+        style={{ marginTop: "auto" }}
+      >
+        Logout
       </button>
     </div>
   );
