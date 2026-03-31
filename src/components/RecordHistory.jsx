@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import apiClient from "../api/axiosConfig";
 import "../styles/RecordHistory.css";
 import ZoomAnnotatedImage from "./ZoomAnnotatedImage";
 
@@ -12,10 +13,9 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const base = `http://localhost:8000/api/records`;
-        const url = inspection ? `${base}?transformer_id=${transformer.id}&inspection_id=${inspection.id}` : `${base}?transformer_id=${transformer.id}`;
-        const res = await fetch(url);
-        const data = await res.json();
+        const url = `/records?transformer_id=${transformer.id}${inspection ? `&inspection_id=${inspection.id}` : ''}`;
+        const res = await apiClient.get(url);
+        const data = res.data?.data || res.data;
         setRecords(data);
         // Auto-select the latest record for convenience
         if (Array.isArray(data) && data.length > 0) {
@@ -36,10 +36,9 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
     const computeInspectionNumber = async () => {
       if (!inspection) return;
       try {
-        const res = await fetch('http://localhost:8000/api/inspections');
-        if (!res.ok) throw new Error('Failed fetch inspections');
-        const all = await res.json();
-        const forTransformer = all.filter(i => i.transformer === transformer.id).sort((a, b) => a.id - b.id);
+        const res = await apiClient.get(`/transformers/${transformer.id}/inspections`);
+        const all = res.data?.data || res.data || [];
+        const forTransformer = Array.isArray(all) ? all.sort((a, b) => a.id - b.id) : [];
         const idx = forTransformer.findIndex(i => i.id === inspection.id);
         if (idx >= 0) {
           setInspectionNumber(`${transformer.number}-INSP${idx + 1}`);
@@ -59,14 +58,9 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
   const deleteRecord = async (rec) => {
     if (!window.confirm('Delete this maintenance record? This action cannot be undone.')) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/records/${rec.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setRecords(prev => prev.filter(r => r.id !== rec.id));
-        if (selectedRecord && selectedRecord.id === rec.id) setSelectedRecord(null);
-      } else {
-        const err = await res.json();
-        alert('Failed to delete: ' + (err.error || 'Unknown error'));
-      }
+      const res = await apiClient.delete(`/records/${rec.id}`);
+      setRecords(prev => prev.filter(r => r.id !== rec.id));
+      if (selectedRecord && selectedRecord.id === rec.id) setSelectedRecord(null);
     } catch (e) {
       console.error('Delete failed', e);
       alert('Network error deleting record');
@@ -91,8 +85,9 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
             <button
               className="btn-secondary"
               onClick={() => {
-                const base = `http://localhost:8000/api/records/export/pdf?transformer_id=${transformer.id}`;
-                const url = inspection ? `${base}&inspection_id=${inspection.id}` : base;
+                const base = `${apiClient.defaults.baseURL}/records/export/pdf/${selectedRecord ? selectedRecord.id : ''}`;
+                // Let's assume we export by transformer ID instead of individual record ID if not selected
+                const url = selectedRecord ? `${apiClient.defaults.baseURL}/records/export/pdf/${selectedRecord.id}` : `${apiClient.defaults.baseURL}/records?transformer_id=${transformer.id}`;
                 window.open(url, '_blank');
               }}
             >Export PDF</button>
@@ -125,9 +120,13 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                     </thead>
                     <tbody>
                       {records.map(r => {
-                        const anomaliesArr = Array.isArray(r.anomalies) ? r.anomalies : (r.anomalies && typeof r.anomalies === 'object' ? Object.values(r.anomalies) : []);
+                        let parsedAnomalies = [];
+                        try {
+                          parsedAnomalies = typeof r.anomalies === 'string' ? JSON.parse(r.anomalies) : r.anomalies;
+                        } catch(e) {}
+                        const anomaliesArr = Array.isArray(parsedAnomalies) ? parsedAnomalies : (parsedAnomalies && typeof parsedAnomalies === 'object' ? Object.values(parsedAnomalies) : []);
                         const anomalyCount = anomaliesArr.filter(a => !a.deleted).length;
-                        const savedAtRaw = r.created_at || r.updated_at || r.record_timestamp;
+                        const savedAtRaw = r.createdAt || r.updatedAt || r.recordTimestamp || r.created_at || r.updated_at || r.record_timestamp;
                         let savedAt = savedAtRaw;
                         try {
                           if (savedAtRaw && /\d/.test(savedAtRaw)) {
@@ -140,9 +139,9 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                         return (
                           <tr key={r.id}>
                             <td onClick={() => openRecord(r)} className="cell-link">{r.id}</td>
-                            <td onClick={() => openRecord(r)} className="cell-link">{r.record_timestamp}</td>
+                            <td onClick={() => openRecord(r)} className="cell-link">{r.recordTimestamp || r.record_timestamp}</td>
                             <td onClick={() => openRecord(r)} className="cell-link">{savedAt || '—'}</td>
-                            <td onClick={() => openRecord(r)} className="cell-link">{r.engineer_name || 'N/A'}</td>
+                            <td onClick={() => openRecord(r)} className="cell-link">{r.engineerName || r.engineer_name || 'N/A'}</td>
                             <td onClick={() => openRecord(r)} className="cell-link">{r.location || transformer.location || 'N/A'}</td>
                             <td onClick={() => openRecord(r)} className="cell-link"><span className={`status-badge ${statusClass}`}>{r.status || 'N/A'}</span></td>
                             <td onClick={() => openRecord(r)} className="cell-link">{anomalyCount}</td>
@@ -176,11 +175,11 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                   <div className="details-meta">
                     <div>
                       <div className="label">Saved At</div>
-                      <div className="value monospace">{(selectedRecord.created_at && new Date(selectedRecord.created_at).toLocaleString()) || selectedRecord.record_timestamp || '—'}</div>
+                      <div className="value monospace">{(selectedRecord.createdAt || selectedRecord.created_at ? new Date(selectedRecord.createdAt || selectedRecord.created_at).toLocaleString() : '') || selectedRecord.recordTimestamp || selectedRecord.record_timestamp || '—'}</div>
                     </div>
                     <div>
                       <div className="label">Engineer</div>
-                      <div className="value">{selectedRecord.engineer_name || 'N/A'}</div>
+                      <div className="value">{selectedRecord.engineerName || selectedRecord.engineer_name || 'N/A'}</div>
                     </div>
                     <div>
                       <div className="label">Location</div>
@@ -199,7 +198,11 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                   <div className="details-section">
                     <div className="section-subtitle">Anomalies</div>
                     {(() => {
-                      const arr = Array.isArray(selectedRecord.anomalies) ? selectedRecord.anomalies : (selectedRecord.anomalies && typeof selectedRecord.anomalies === 'object' ? Object.values(selectedRecord.anomalies) : []);
+                      let parsedAnomalies = [];
+                      try {
+                        parsedAnomalies = typeof selectedRecord.anomalies === 'string' ? JSON.parse(selectedRecord.anomalies) : selectedRecord.anomalies;
+                      } catch(e) {}
+                      const arr = Array.isArray(parsedAnomalies) ? parsedAnomalies : (parsedAnomalies && typeof parsedAnomalies === 'object' ? Object.values(parsedAnomalies) : []);
                       const filtered = arr.filter(a => !a.deleted);
                       return filtered.length > 0 ? (
                       <div className="table-wrap">
@@ -234,13 +237,17 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                     })()}
                   </div>
 
-                  {selectedRecord.annotated_image && (
+                  {selectedRecord.annotatedImage && (
                     <ZoomAnnotatedImage
-                      src={selectedRecord.annotated_image}
+                      src={selectedRecord.annotatedImage}
                       anomalies={(() => {
-                        const arr = Array.isArray(selectedRecord.anomalies)
-                          ? selectedRecord.anomalies
-                          : (selectedRecord.anomalies && typeof selectedRecord.anomalies === 'object' ? Object.values(selectedRecord.anomalies) : []);
+                        let parsedAnomalies = [];
+                        try {
+                          parsedAnomalies = typeof selectedRecord.anomalies === 'string' ? JSON.parse(selectedRecord.anomalies) : selectedRecord.anomalies;
+                        } catch(e) {}
+                        const arr = Array.isArray(parsedAnomalies)
+                          ? parsedAnomalies
+                          : (parsedAnomalies && typeof parsedAnomalies === 'object' ? Object.values(parsedAnomalies) : []);
                         return arr.filter(a => !a.deleted);
                       })()}
                     />
@@ -254,7 +261,7 @@ export default function RecordHistory({ transformer, inspection = null, onClose 
                   <div className="details-section two-col">
                     <div>
                       <div className="section-subtitle">Recommended Action</div>
-                      <div className="text-block">{selectedRecord.recommended_action || '—'}</div>
+                      <div className="text-block">{selectedRecord.recommendedAction || selectedRecord.recommended_action || '—'}</div>
                     </div>
                     <div>
                       <div className="section-subtitle">Notes</div>

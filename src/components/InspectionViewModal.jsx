@@ -1,5 +1,7 @@
 // InspectionViewModalWithAI.jsx
 import { useState, useEffect, useRef } from "react";
+import apiClient from "../api/axiosConfig";
+import { resolveDisplayImageUrl } from "../api/imageUpload";
 import MaintenanceRecordForm from "./MaintenanceRecordForm";
 import ZoomAnnotatedImage from "./ZoomAnnotatedImage";
 import '../styles/InspectionViewModal.css';
@@ -11,7 +13,8 @@ export default function InspectionViewModal({
   updateInspection,
   updateTransformer
 }) {
-  const transformer = transformers.find(t => t.id === inspection.transformer);
+  const inspectionTransformerId = Number(inspection.transformerId ?? inspection.transformer);
+  const transformer = transformers.find(t => Number(t.id) === inspectionTransformerId);
   const uploader = "Admin";
   const weatherOptions = ["Sunny", "Rainy", "Cloudy"];
 
@@ -30,12 +33,51 @@ export default function InspectionViewModal({
 
   const [baselineImageURL, setBaselineImageURL] = useState(null);
   useEffect(() => {
-    if (!baselineImage) { setBaselineImageURL(null); return; }
-    if (baselineImage instanceof File || baselineImage instanceof Blob) {
-      const url = URL.createObjectURL(baselineImage);
-      setBaselineImageURL(url);
-      return () => URL.revokeObjectURL(url);
-    } else { setBaselineImageURL(baselineImage); }
+    let isActive = true;
+    let objectUrl = null;
+
+    const loadBaselineImageUrl = async () => {
+      if (!baselineImage) {
+        setBaselineImageURL(null);
+        return;
+      }
+
+      if (baselineImage instanceof File || baselineImage instanceof Blob) {
+        objectUrl = URL.createObjectURL(baselineImage);
+        if (isActive) {
+          setBaselineImageURL(objectUrl);
+        }
+        return;
+      }
+
+      if (typeof baselineImage === "string") {
+        try {
+          const resolvedUrl = await resolveDisplayImageUrl(baselineImage);
+          if (isActive) {
+            setBaselineImageURL(resolvedUrl);
+          }
+        } catch (error) {
+          console.error("Failed to resolve baseline image URL:", error);
+          if (isActive) {
+            setBaselineImageURL(null);
+          }
+        }
+        return;
+      }
+
+      if (isActive) {
+        setBaselineImageURL(null);
+      }
+    };
+
+    loadBaselineImageUrl();
+
+    return () => {
+      isActive = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [baselineImage]);
 
   // --- Maintenance state ---
@@ -125,41 +167,22 @@ export default function InspectionViewModal({
 
   // Auto-save annotations when they change
   useEffect(() => {
-    const autoSave = async () => {
-      if (anomalies.length > 0 && inspection.id) {
-        try {
-          await fetch(`http://localhost:8000/api/annotations/${inspection.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              annotations: anomalies,
-              user_id: uploader,
-              transformer_id: inspection.transformer
-            })
-          });
-        } catch (error) {
-          console.error('Auto-save failed:', error);
-        }
-      }
-    };
-    
-    // Debounce auto-save
-    const timeoutId = setTimeout(autoSave, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [anomalies, inspection.id, inspection.transformer]);
+    // Single anomaly save API is not ideal for mass auto-save on every drag.
+    // Moved saving logic to handleSave.
+  }, [anomalies, inspection.id, inspectionTransformerId]);
 
   // Load saved annotations when component mounts
   useEffect(() => {
     const loadAnnotations = async () => {
       if (inspection.id) {
         try {
-          const response = await fetch(`http://localhost:8000/api/annotations/${inspection.id}`);
-          if (response.ok) {
-            const savedAnnotations = await response.json();
+          const response = await apiClient.get(`/inspections/${inspection.id}/anomalies`);
+          if (response.data && response.data.data) {
+            const savedAnnotations = response.data.data;
             if (savedAnnotations.length > 0) {
               // Convert from database format to UI format
               const convertedAnnotations = savedAnnotations.map(a => ({
-                id: a.annotation_id,
+                id: a.annotationId || a.id,
                 x: a.x,
                 y: a.y,
                 w: a.w,
@@ -357,15 +380,43 @@ export default function InspectionViewModal({
     // Save annotations to backend
     if (anomalies && anomalies.length > 0 && inspection.id) {
       try {
-        await fetch(`http://localhost:8000/api/annotations/${inspection.id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            annotations: anomalies,
-            user_id: uploader,
-            transformer_id: inspection.transformer
+        await Promise.all(
+          anomalies.map(anomaly => {
+            if (anomaly.deleted && anomaly.id) {
+              // Delete anomaly if it's marked as deleted
+              // We check if it's not a generic random id starting with 'Date.now()'
+              if (!anomaly.id.toString().includes('_')) {
+                 return apiClient.delete(`/anomalies/${anomaly.id}`);
+              } else {
+                 return Promise.resolve();
+              }
+            } else if (!anomaly.deleted) {
+              const payload = {
+                annotationId: anomaly.id.toString(),
+                x: anomaly.x,
+                y: anomaly.y,
+                w: anomaly.w,
+                h: anomaly.h,
+                confidence: anomaly.confidence || 0.0,
+                severity: anomaly.severity || "UNKNOWN",
+                classification: anomaly.classification || "UNKNOWN",
+                comment: anomaly.comment || "",
+                source: anomaly.source || "user",
+                deleted: false,
+                userId: uploader
+              };
+              
+              if (!anomaly.id.toString().includes('_')) {
+                // If it's an existing ID from DB, PUT it to update
+                return apiClient.put(`/anomalies/${anomaly.id}`, payload);
+              } else {
+                // If it's a new generated ID format, POST it
+                return apiClient.post(`/inspections/${inspection.id}/anomalies`, payload);
+              }
+            }
+            return Promise.resolve();
           })
-        });
+        );
       } catch (error) {
         console.error('Failed to save annotations:', error);
         alert('Failed to save annotations. Please try again.');
@@ -430,44 +481,38 @@ export default function InspectionViewModal({
     }
   };
 
-  // Run AI: POST baseline + maintenance to /analyze
+  // Run AI: POST to /api/v1/inspections/{id}/analyze
   const handleRunAI = async () => {
     if (!baselineImage || !maintenanceImage) {
-      alert("Upload both baseline and maintenance images before running AI analysis.");
+      alert("Please ensure both baseline and maintenance images are available before running AI analysis.");
       return;
     }
     setIsRunningAI(true);
     setProgressStatus(prev => ({ ...prev, aiAnalysis: "In Progress" }));
 
     try {
-      const form = new FormData();
-      // backend expects files; convert dataURI to File if necessary
-      const bfile = baselineImage instanceof File ? baselineImage : dataURLtoFile(baselineImage, 'baseline.png');
-      const mfile = maintenanceImage instanceof File ? maintenanceImage : dataURLtoFile(maintenanceImage, 'maintenance.png');
-      form.append('baseline', bfile);
-      form.append('maintenance', mfile);
-      form.append('inspection_id', inspection.id);
-      form.append('threshold', aiThreshold); // Send threshold to backend
-
-      const res = await fetch("http://localhost:8000/analyze", {
-        method: "POST",
-        body: form
+      const res = await apiClient.post(`/inspections/${inspection.id}/analyze`, {
+        sliderPercent: aiThreshold
       });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`AI analyze failed: ${txt}`);
+      const data = res.data?.data || res.data;
+      
+      // If the backend doesn't return a base64 string, we might just have to fallback to maintenance URL
+      // But let's check if the backend might return annotated data-uri as a fallback or not.
+      // If none, we'll retain the maintenance image as the background.
+      if (data.overlayImage?.path || data.annotatedImage) {
+        setAnnotatedImage(data.annotatedImage || data.overlayImage?.path);
+      } else {
+        setAnnotatedImage(null); // fallback if not provided
       }
 
-      const j = await res.json();
-      // Expect: { annotatedImage: <data-uri or url>, anomalies: [{id,x,y,w,h,confidence,severity}] }
-      // Use the image data URI sent directly from the backend. This is crucial.
-      setAnnotatedImage(j.annotatedImage);
-
       // map anomalies, ensure ids exist
-      const mapped = (j.anomalies || []).map(a => ({
+      const mapped = (data.anomalies || []).map(a => ({
         id: a.id ?? `${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-        x: a.x, y: a.y, w: a.w, h: a.h,
+        x: a.bbox ? a.bbox.x : a.x,
+        y: a.bbox ? a.bbox.y : a.y,
+        w: a.bbox ? a.bbox.width : a.w,
+        h: a.bbox ? a.bbox.height : a.h,
         confidence: a.confidence ?? null,
         classification: a.classification ?? 'Unknown',
         severity: a.severity ?? null,

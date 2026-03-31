@@ -2,6 +2,11 @@ import apiClient from "./axiosConfig";
 
 const URL_REGEX = /^https?:\/\//i;
 const DATA_URI_REGEX = /^data:/i;
+const BLOB_URL_PREFIX = "blob:";
+const DOWNLOAD_URL_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const downloadUrlCache = new Map();
+const downloadUrlInFlight = new Map();
 
 const deriveFileExtension = (file) => {
   const fileName = file?.name || "";
@@ -20,6 +25,24 @@ const deriveFileExtension = (file) => {
   }
 
   return "bin";
+};
+
+const isDirectImageSource = (value) =>
+  typeof value === "string" &&
+  (URL_REGEX.test(value) || DATA_URI_REGEX.test(value) || value.startsWith(BLOB_URL_PREFIX));
+
+const getCachedDownloadUrl = (key) => {
+  const cachedEntry = downloadUrlCache.get(key);
+  if (!cachedEntry) {
+    return null;
+  }
+
+  if (Date.now() - cachedEntry.cachedAt > DOWNLOAD_URL_CACHE_TTL_MS) {
+    downloadUrlCache.delete(key);
+    return null;
+  }
+
+  return cachedEntry.url;
 };
 
 export const getExistingObjectKey = (...keyCandidates) => {
@@ -49,7 +72,7 @@ export async function requestPresignedUploadUrl({ folder, file }) {
   }
 
   if (!(file instanceof File)) {
-    throw new Error("A valid image file is required for upload.");
+    throw new TypeError("A valid image file is required for upload.");
   }
 
   const extension = deriveFileExtension(file);
@@ -74,13 +97,90 @@ export async function requestPresignedUploadUrl({ folder, file }) {
   };
 }
 
+export async function requestPresignedDownloadUrl({ key }) {
+  if (!key) {
+    throw new Error("Image key is required.");
+  }
+
+  const trimmedKey = key.trim();
+  if (!trimmedKey) {
+    throw new Error("Image key is required.");
+  }
+
+  if (isDirectImageSource(trimmedKey)) {
+    return trimmedKey;
+  }
+
+  const cachedUrl = getCachedDownloadUrl(trimmedKey);
+  if (cachedUrl) {
+    return cachedUrl;
+  }
+
+  const inFlightRequest = downloadUrlInFlight.get(trimmedKey);
+  if (inFlightRequest) {
+    return inFlightRequest;
+  }
+
+  const request = (async () => {
+    const { data } = await apiClient.get("/images/generate-download-url", {
+      params: {
+        key: trimmedKey,
+      },
+    });
+
+    const payload = data?.data ?? data;
+    const downloadUrl = typeof payload === "string"
+      ? payload
+      : payload?.downloadUrl || payload?.url || payload?.presignedUrl;
+
+    if (!downloadUrl || typeof downloadUrl !== "string") {
+      throw new Error("Backend did not return a valid pre-signed download URL.");
+    }
+
+    downloadUrlCache.set(trimmedKey, {
+      url: downloadUrl,
+      cachedAt: Date.now(),
+    });
+
+    return downloadUrl;
+  })();
+
+  downloadUrlInFlight.set(trimmedKey, request);
+
+  try {
+    return await request;
+  } catch (error) {
+    downloadUrlCache.delete(trimmedKey);
+    throw error;
+  } finally {
+    downloadUrlInFlight.delete(trimmedKey);
+  }
+}
+
+export async function resolveDisplayImageUrl(source) {
+  if (typeof source !== "string") {
+    return null;
+  }
+
+  const trimmedSource = source.trim();
+  if (!trimmedSource) {
+    return null;
+  }
+
+  if (isDirectImageSource(trimmedSource)) {
+    return trimmedSource;
+  }
+
+  return requestPresignedDownloadUrl({ key: trimmedSource });
+}
+
 export async function uploadFileToS3({ presignedUrl, file }) {
   if (!presignedUrl) {
     throw new Error("Missing pre-signed URL for S3 upload.");
   }
 
   if (!(file instanceof File)) {
-    throw new Error("A valid image file is required for S3 upload.");
+    throw new TypeError("A valid image file is required for S3 upload.");
   }
 
   if (!file.type) {

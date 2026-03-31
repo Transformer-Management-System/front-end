@@ -19,7 +19,7 @@ import {
 import "./App.css";
 
 function App() {
-  const { logout } = useAuth();
+  const { logout, authenticated, loading } = useAuth();
   const [activePage, setActivePage] = useState("page1");
   const [activeTab, setActiveTab] = useState("details");
 
@@ -74,21 +74,52 @@ function App() {
 
   // --- Load all data from backend on startup ---
   useEffect(() => {
+    if (loading || !authenticated) {
+      return;
+    }
+
+    let isActive = true;
+
     const fetchData = async () => {
       try {
-        const [transformersRes, inspectionsRes] = await Promise.all([
-          apiClient.get('/transformers'),
-          apiClient.get('/inspections'),
-        ]);
-        setTransformers(transformersRes.data?.data || transformersRes.data);
-        setInspections(inspectionsRes.data?.data || inspectionsRes.data);
+        const transformersRes = await apiClient.get('/transformers');
+        const loadedTransformers = transformersRes.data?.data || transformersRes.data || [];
+        const transformerList = Array.isArray(loadedTransformers) ? loadedTransformers : [];
+
+        if (!isActive) return;
+        setTransformers(transformerList);
+
+        const inspectionsByTransformer = await Promise.allSettled(
+          transformerList.map(async (transformer) => {
+            const inspectionsRes = await apiClient.get(`/transformers/${transformer.id}/inspections`);
+            const loadedInspections = inspectionsRes.data?.data || inspectionsRes.data || [];
+            return Array.isArray(loadedInspections) ? loadedInspections : [];
+          })
+        );
+
+        const flattenedInspections = inspectionsByTransformer.flatMap((result) => (
+          result.status === "fulfilled" ? result.value : []
+        ));
+
+        const failedInspectionLoads = inspectionsByTransformer.filter((result) => result.status === "rejected");
+        if (failedInspectionLoads.length > 0) {
+          console.warn(`Failed to fetch inspections for ${failedInspectionLoads.length} transformer(s).`);
+        }
+
+        if (isActive) {
+          setInspections(flattenedInspections);
+        }
       } catch (error) {
-        console.error("Failed to fetch data from backend:", error);
-        alert("Could not connect to the backend. Please ensure it is running.");
+        console.error("Failed to fetch transformers from backend:", error);
+        alert("Could not load transformers. Please ensure the backend is running and you are signed in.");
       }
     };
     fetchData();
-  }, []);
+
+    return () => {
+      isActive = false;
+    };
+  }, [authenticated, loading]);
 
 
   // --- Filtering ---
@@ -106,9 +137,10 @@ function App() {
     setFilteredInspections(
       inspections.filter(i => {
         if (!searchQueryInspection) return true;
+        const inspectionTransformerId = Number(i.transformerId ?? i.transformer);
         const value =
           searchFieldInspection === "transformer"
-            ? transformers.find(t => t.id === i.transformer)?.number?.toString().toLowerCase() || ""
+            ? transformers.find(t => Number(t.id) === inspectionTransformerId)?.number?.toString().toLowerCase() || ""
             : i[searchFieldInspection]?.toString().toLowerCase() || "";
         return value.includes(searchQueryInspection.toLowerCase());
       })
@@ -225,73 +257,82 @@ function App() {
 
   const handleViewInspection = (inspection) => { setViewInspectionData(inspection); setShowViewInspectionModal(true); };
   const handleUpdateInspection = async (updatedInspection) => {
-    await apiClient.put(`/inspections/${updatedInspection.id}`, updatedInspection);
-    setInspections(inspections.map(i => (i.id === updatedInspection.id ? updatedInspection : i)));
+    const res = await apiClient.put(`/inspections/${updatedInspection.id}`, updatedInspection);
+    const saved = res.data?.data || res.data;
+    setInspections(inspections.map(i => (i.id === saved.id ? saved : i)));
   };
   const handleUpdateTransformer = async (updatedTransformer) => {
-    await apiClient.post('/transformers', updatedTransformer);
-    setTransformers(prev => prev.map(t => (t.id === updatedTransformer.id ? updatedTransformer : t)));
+    const res = await apiClient.put(`/transformers/${updatedTransformer.id}`, updatedTransformer);
+    const saved = res.data?.data || res.data;
+    setTransformers(prev => prev.map(t => (t.id === saved.id ? saved : t)));
   };
 
   // --- Full-page inspection handlers ---
   const handleOpenTransformerInspectionsPage = (transformer) => { setSelectedTransformerForPage(transformer); setShowTransformerInspectionsPage(true); };
   const handleBackToMain = () => { setSelectedTransformerForPage(null); setShowTransformerInspectionsPage(false); };
+
+  let mainContent = null;
+  if (activePage === "page2") {
+    mainContent = <SettingsPage />;
+  } else if (showTransformerInspectionsPage && selectedTransformerForPage) {
+    mainContent = (
+      <TransformerInspectionsPage
+        transformer={selectedTransformerForPage}
+        inspections={inspections.filter(i => Number(i.transformerId ?? i.transformer) === Number(selectedTransformerForPage.id))}
+        setInspections={setInspections}
+        setFilteredInspections={setFilteredInspections}
+        transformers={transformers}
+        onBack={handleBackToMain}
+        onViewInspection={handleViewInspection}
+        deleteInspection={handleDeleteInspection}
+      />
+    );
+  } else {
+    mainContent = (
+      <>
+        <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
+        {activeTab === "details" && (
+          <TransformerList
+            transformers={transformers}
+            filteredTransformers={filteredTransformers}
+            setTransformers={setTransformers}
+            deleteTransformer={handleDeleteTransformer}
+            selectedTransformer={selectedTransformer}
+            setSelectedTransformer={setSelectedTransformer}
+            searchFieldDetails={searchFieldDetails}
+            setSearchFieldDetails={setSearchFieldDetails}
+            searchQueryDetails={searchQueryDetails}
+            setSearchQueryDetails={setSearchQueryDetails}
+            setShowModal={openTransformerModal}
+            onViewInspections={handleOpenTransformerInspectionsPage}
+          />
+        )}
+        {activeTab === "inspection" && (
+          <InspectionList
+            filteredInspections={filteredInspections}
+            transformers={transformers}
+            inspections={inspections}
+            setInspections={setInspections}
+            setFilteredInspections={setFilteredInspections}
+            searchFieldInspection={searchFieldInspection}
+            setSearchFieldInspection={setSearchFieldInspection}
+            searchQueryInspection={searchQueryInspection}
+            setSearchQueryInspection={setSearchQueryInspection}
+            openAddInspectionModal={() => setShowAddInspectionModal(true)}
+            onViewInspections={handleOpenTransformerInspectionsPage}
+            deleteInspection={handleDeleteInspection}
+          />
+        )}
+      </>
+    );
+  }
   
   return (
     <ProtectedRoute>
     <div className="app">
       <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={logout} />
       <div className="content">
-        {activePage === "page2" ? (
-          <SettingsPage />
-        ) : showTransformerInspectionsPage && selectedTransformerForPage ? (
-          <TransformerInspectionsPage
-            transformer={selectedTransformerForPage}
-            inspections={inspections.filter(i => i.transformer === selectedTransformerForPage.id)}
-            setInspections={setInspections}
-            setFilteredInspections={setFilteredInspections}
-            transformers={transformers}
-            onBack={handleBackToMain}
-            onViewInspection={handleViewInspection}
-            deleteInspection={handleDeleteInspection}
-          />
-        ) : (
-          <>
-            <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
-            {activeTab === "details" && (
-              <TransformerList
-                transformers={transformers}
-                filteredTransformers={filteredTransformers}
-                setTransformers={setTransformers}
-                deleteTransformer={handleDeleteTransformer}
-                selectedTransformer={selectedTransformer}
-                setSelectedTransformer={setSelectedTransformer}
-                searchFieldDetails={searchFieldDetails}
-                setSearchFieldDetails={setSearchFieldDetails}
-                searchQueryDetails={searchQueryDetails}
-                setSearchQueryDetails={setSearchQueryDetails}
-                setShowModal={openTransformerModal}
-                onViewInspections={handleOpenTransformerInspectionsPage}
-              />
-            )}
-            {activeTab === "inspection" && (
-              <InspectionList
-                filteredInspections={filteredInspections}
-                transformers={transformers}
-                inspections={inspections}
-                setInspections={setInspections}
-                setFilteredInspections={setFilteredInspections}
-                searchFieldInspection={searchFieldInspection}
-                setSearchFieldInspection={setSearchFieldInspection}
-                searchQueryInspection={searchQueryInspection}
-                setSearchQueryInspection={setSearchQueryInspection}
-                openAddInspectionModal={() => setShowAddInspectionModal(true)}
-                onViewInspections={handleOpenTransformerInspectionsPage}
-                deleteInspection={handleDeleteInspection}
-              />
-            )}
-          </>
-        )}
+        {mainContent}
       </div>
 
       {showTransformerModal && (

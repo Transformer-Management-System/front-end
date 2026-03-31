@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import placeholderImage from "../assets/transformer.jpg";
+import { resolveDisplayImageUrl } from "../api/imageUpload";
 import "../styles/TransformerList.css";
 
 export default function TransformerList({
@@ -16,18 +17,51 @@ export default function TransformerList({
   const [imageURL, setImageURL] = useState(null);
 
   useEffect(() => {
-    if (selectedTransformer?.baselineImage) {
-      const file = selectedTransformer.baselineImage;
-      if (typeof file === "string") {
-        setImageURL(file);
-      } else {
-        const url = URL.createObjectURL(file);
-        setImageURL(url);
-        return () => URL.revokeObjectURL(url);
+    let isActive = true;
+    let objectUrl = null;
+
+    const loadBaselineImage = async () => {
+      const baselineImage = selectedTransformer?.baselineImage;
+
+      if (!baselineImage) {
+        setImageURL(null);
+        return;
       }
-    } else {
+
+      if (baselineImage instanceof File || baselineImage instanceof Blob) {
+        objectUrl = URL.createObjectURL(baselineImage);
+        if (isActive) {
+          setImageURL(objectUrl);
+        }
+        return;
+      }
+
+      if (typeof baselineImage === "string") {
+        try {
+          const resolvedUrl = await resolveDisplayImageUrl(baselineImage);
+          if (isActive) {
+            setImageURL(resolvedUrl);
+          }
+        } catch (error) {
+          console.error("Failed to resolve baseline image URL:", error);
+          if (isActive) {
+            setImageURL(null);
+          }
+        }
+        return;
+      }
+
       setImageURL(null);
-    }
+    };
+
+    loadBaselineImage();
+
+    return () => {
+      isActive = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [selectedTransformer]);
 
   const handleEdit = (transformer) => {

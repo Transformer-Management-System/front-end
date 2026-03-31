@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import apiClient from "../api/axiosConfig";
 
 export default function MaintenanceRecordForm({
   transformer,
@@ -42,10 +43,9 @@ export default function MaintenanceRecordForm({
     const computeInspectionNumber = async () => {
       if (!inspection?.id || !transformer?.id) return;
       try {
-        const res = await fetch('http://localhost:8000/api/inspections');
-        if (!res.ok) throw new Error('Failed to fetch inspections');
-        const all = await res.json();
-        const forTransformer = all.filter(i => i.transformer === transformer.id).sort((a, b) => a.id - b.id);
+        const res = await apiClient.get(`/transformers/${transformer.id}/inspections`);
+        const all = res.data?.data || res.data || [];
+        const forTransformer = Array.isArray(all) ? all.sort((a, b) => a.id - b.id) : [];
         const idx = forTransformer.findIndex(i => i.id === inspection.id);
         if (idx >= 0) {
           setInspectionNumber(`${transformer.number}-INSP${idx + 1}`);
@@ -77,17 +77,17 @@ export default function MaintenanceRecordForm({
     setSaveSuccess(false);
     try {
       const payload = {
-        transformer_id: transformer.id,
-        inspection_id: inspection.id,
-        record_timestamp: recordTimestamp,
-        engineer_name: engineerName.trim(),
+        transformerId: transformer.id,
+        inspectionId: inspection.id,
+        recordTimestamp,
+        engineerName: engineerName.trim(),
         status,
         readings,
-        recommended_action: recommendedAction,
+        recommendedAction,
         notes,
-        annotated_image: annotatedImage || inspection?.annotatedImage || null,
+        annotatedImage: annotatedImage || inspection?.annotatedImage || null,
         location: location || transformer?.location || '',
-        anomalies: (anomalies && anomalies.length ? anomalies : (inspection?.anomalies || [])).map(a => ({
+        anomalies: JSON.stringify((anomalies && anomalies.length ? anomalies : (inspection?.anomalies || [])).map(a => ({
           id: a.id,
           x: a.x,
           y: a.y,
@@ -98,15 +98,10 @@ export default function MaintenanceRecordForm({
           comment: a.comment || a.notes || '',
           source: a.source || (a.confidence !== undefined ? 'ai' : 'user'),
           deleted: !!a.deleted
-        }))
+        })))
       };
-      const res = await fetch('http://localhost:8000/api/records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const saved = await res.json();
+      const res = await apiClient.post('/records', payload);
+      const saved = res.data?.data || res.data;
       setSaveSuccess(true);
       if (onSaved) onSaved(saved);
       // Keep modal open to allow printing immediately

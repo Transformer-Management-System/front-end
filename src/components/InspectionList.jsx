@@ -26,7 +26,7 @@ export default function InspectionList({
   };
 
   const transformerRows = transformers.map((t) => {
-    const tInspections = inspections.filter(i => i.transformer === t.id);
+    const tInspections = inspections.filter(i => Number(i.transformerId ?? i.transformer) === Number(t.id));
 
     // Prefer latestInspection attached to transformer (from backend) for persisted data
     let latestInspectedDate;

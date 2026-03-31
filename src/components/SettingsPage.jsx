@@ -1,6 +1,8 @@
 import { useState } from "react";
 import "../styles/SettingsPage.css";
 
+import apiClient from '../api/axiosConfig';
+
 export default function SettingsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
@@ -19,12 +21,8 @@ export default function SettingsPage() {
     setIsExporting(true);
     setExportStatus(null);
     try {
-      const response = await fetch('http://localhost:8000/api/annotation-logs/export/json');
-      if (!response.ok) {
-        throw new Error('Failed to export annotation logs');
-      }
-      const jsonData = await response.text();
-      downloadFile('annotation_logs.json', jsonData, 'application/json');
+      const response = await apiClient.get('/annotation-logs/export/json', { responseType: 'text' });
+      downloadFile('annotation_logs.json', response.data, 'application/json');
       setExportStatus({ type: 'success', message: 'JSON export completed successfully!' });
     } catch (error) {
       console.error('Export failed:', error);
@@ -38,12 +36,8 @@ export default function SettingsPage() {
     setIsExporting(true);
     setExportStatus(null);
     try {
-      const response = await fetch('http://localhost:8000/api/annotation-logs/export/csv');
-      if (!response.ok) {
-        throw new Error('Failed to export annotation logs');
-      }
-      const csvData = await response.text();
-      downloadFile('annotation_logs.csv', csvData, 'text/csv');
+      const response = await apiClient.get('/annotation-logs/export/csv', { responseType: 'text' });
+      downloadFile('annotation_logs.csv', response.data, 'text/csv');
       setExportStatus({ type: 'success', message: 'CSV export completed successfully!' });
     } catch (error) {
       console.error('Export failed:', error);

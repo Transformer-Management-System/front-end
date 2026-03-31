@@ -49,6 +49,10 @@ export async function saveTransformerWithOptionalImage(transformerForm) {
     delete payload.baselineImage;
   }
 
+  if (payload.id) {
+    return apiClient.put(`/transformers/${payload.id}`, payload);
+  }
+
   return apiClient.post("/transformers", payload);
 }
 
@@ -63,6 +67,7 @@ export async function createInspectionWithOptionalImage(inspectionForm, transfor
     : null;
 
   const existingInspectionKey = getExistingObjectKey(
+    inspectionForm.maintenanceImage,
     inspectionForm.inspection_image_key,
     inspectionForm.inspectionImageKey,
   );
@@ -79,14 +84,13 @@ export async function createInspectionWithOptionalImage(inspectionForm, transfor
     : null;
 
   const payload = {
-    transformer: parsedTransformerId,
     date: inspectionForm.date,
     inspector: inspectionForm.inspector,
     notes: inspectionForm.notes || "",
     maintenanceWeather: inspectionForm.maintenanceWeather || "Sunny",
     progressStatus: inspectionForm.progressStatus || DEFAULT_PROGRESS_STATUS,
-    inspection_image_key: uploadedInspectionKey || existingInspectionKey,
+    maintenanceImage: uploadedInspectionKey || existingInspectionKey,
   };
 
-  return apiClient.post("/inspections", payload);
+  return apiClient.post(`/transformers/${parsedTransformerId}/inspections`, payload);
 }
