@@ -1,10 +1,109 @@
 import apiClient from "./axiosConfig";
 import { getExistingObjectKey, uploadImageAndGetObjectKey } from "./imageUpload";
 
-const DEFAULT_PROGRESS_STATUS = {
+const DEFAULT_UI_PROGRESS_STATUS = {
   thermalUpload: "Pending",
   aiAnalysis: "Pending",
   review: "Pending",
+};
+
+const IN_PROGRESS_UI_PROGRESS_STATUS = {
+  thermalUpload: "Completed",
+  aiAnalysis: "In Progress",
+  review: "In Progress",
+};
+
+const COMPLETED_UI_PROGRESS_STATUS = {
+  thermalUpload: "Completed",
+  aiAnalysis: "Completed",
+  review: "Completed",
+};
+
+const serializeInspectionAnomalies = (anomalies) => {
+  if (typeof anomalies === "string") {
+    return anomalies;
+  }
+
+  if (Array.isArray(anomalies)) {
+    return JSON.stringify(anomalies);
+  }
+
+  return JSON.stringify([]);
+};
+
+const normalizeInspectionAnomalies = (anomalies) => {
+  if (Array.isArray(anomalies)) {
+    return anomalies;
+  }
+
+  if (typeof anomalies === "string") {
+    try {
+      const parsedAnomalies = JSON.parse(anomalies);
+      return Array.isArray(parsedAnomalies) ? parsedAnomalies : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+};
+
+const normalizeInspectionProgressStatus = (inspection) => {
+  const progressStatus = inspection?.progressStatus;
+
+  if (progressStatus && typeof progressStatus === "object") {
+    return progressStatus;
+  }
+
+  if (typeof progressStatus === "string") {
+    const normalizedStatus = progressStatus.trim().toUpperCase();
+
+    if (normalizedStatus === "DONE" || normalizedStatus === "COMPLETED") {
+      return COMPLETED_UI_PROGRESS_STATUS;
+    }
+
+    if (normalizedStatus === "IN_PROGRESS" || normalizedStatus === "IN PROGRESS") {
+      return IN_PROGRESS_UI_PROGRESS_STATUS;
+    }
+  }
+
+  if (inspection?.maintenanceImage) {
+    return IN_PROGRESS_UI_PROGRESS_STATUS;
+  }
+
+  return DEFAULT_UI_PROGRESS_STATUS;
+};
+
+const normalizeInspectionForUi = (inspection) => {
+  if (!inspection || typeof inspection !== "object") {
+    return inspection;
+  }
+
+  return {
+    ...inspection,
+    progressStatus: normalizeInspectionProgressStatus(inspection),
+    anomalies: normalizeInspectionAnomalies(inspection.anomalies),
+  };
+};
+
+const buildInspectionPayload = ({ inspectionForm, maintenanceImage }) => {
+  const inspectionDate = inspectionForm?.date || "";
+
+  return {
+    date: inspectionDate,
+    inspectedDate: inspectionDate || undefined,
+    inspector: inspectionForm?.inspector,
+    notes: inspectionForm?.notes || "",
+    status: inspectionForm?.status || "PENDING",
+    maintenanceUploadDate: inspectionForm?.maintenanceUploadDate || inspectionDate || undefined,
+    maintenanceWeather: inspectionForm?.maintenanceWeather || "Sunny",
+    maintenanceImage,
+    anomalies: serializeInspectionAnomalies(inspectionForm?.anomalies),
+    progressStatus:
+      typeof inspectionForm?.progressStatus === "string" && inspectionForm.progressStatus.trim()
+        ? inspectionForm.progressStatus.trim().toUpperCase()
+        : "PENDING",
+  };
 };
 
 export async function saveTransformerWithOptionalImage(transformerForm) {
@@ -83,14 +182,32 @@ export async function createInspectionWithOptionalImage(inspectionForm, transfor
       })
     : null;
 
-  const payload = {
-    date: inspectionForm.date,
-    inspector: inspectionForm.inspector,
-    notes: inspectionForm.notes || "",
-    maintenanceWeather: inspectionForm.maintenanceWeather || "Sunny",
-    progressStatus: inspectionForm.progressStatus || DEFAULT_PROGRESS_STATUS,
+  const payload = buildInspectionPayload({
+    inspectionForm,
     maintenanceImage: uploadedInspectionKey || existingInspectionKey,
-  };
+  });
 
-  return apiClient.post(`/transformers/${parsedTransformerId}/inspections`, payload);
+  const response = await apiClient.post(`/transformers/${parsedTransformerId}/inspections`, payload);
+  const responseData = response.data?.data ?? response.data;
+
+  if (!responseData || typeof responseData !== "object") {
+    return response;
+  }
+
+  const normalizedInspection = normalizeInspectionForUi(responseData);
+
+  if (response.data && Object.hasOwn(response.data, "data")) {
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        data: normalizedInspection,
+      },
+    };
+  }
+
+  return {
+    ...response,
+    data: normalizedInspection,
+  };
 }

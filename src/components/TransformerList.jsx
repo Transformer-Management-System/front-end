@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import placeholderImage from "../assets/transformer.jpg";
 import { resolveDisplayImageUrl } from "../api/imageUpload";
 import "../styles/TransformerList.css";
 
@@ -15,6 +14,7 @@ export default function TransformerList({
   deleteTransformer,
 }) {
   const [imageURL, setImageURL] = useState(null);
+  const [isImageLoading, setIsImageLoading] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -24,7 +24,10 @@ export default function TransformerList({
       const baselineImage = selectedTransformer?.baselineImage;
 
       if (!baselineImage) {
-        setImageURL(null);
+        if (isActive) {
+          setImageURL(null);
+          setIsImageLoading(false);
+        }
         return;
       }
 
@@ -46,12 +49,16 @@ export default function TransformerList({
           console.error("Failed to resolve baseline image URL:", error);
           if (isActive) {
             setImageURL(null);
+            setIsImageLoading(false);
           }
         }
         return;
       }
 
-      setImageURL(null);
+      if (isActive) {
+        setImageURL(null);
+        setIsImageLoading(false);
+      }
     };
 
     loadBaselineImage();
@@ -64,8 +71,28 @@ export default function TransformerList({
     };
   }, [selectedTransformer]);
 
-  const handleEdit = (transformer) => {
+  const setActiveTransformer = (transformer) => {
+    const hasBaselineImage = Boolean(transformer?.baselineImage);
+    setImageURL(null);
+    setIsImageLoading(hasBaselineImage);
     setSelectedTransformer(transformer);
+  };
+
+  const handleView = (transformer) => {
+    setActiveTransformer(transformer);
+  };
+
+  const handleImageLoad = () => {
+    setIsImageLoading(false);
+  };
+
+  const handleImageError = () => {
+    setIsImageLoading(false);
+    setImageURL(null);
+  };
+
+  const handleEdit = (transformer) => {
+    setActiveTransformer(transformer);
     setShowModal(transformer);
   };
 
@@ -128,7 +155,24 @@ export default function TransformerList({
 
             <div className="selected-image-container">
               <strong className="image-title">Baseline Image</strong>
-              <img src={imageURL || placeholderImage} alt="Transformer" className="selected-image" />
+              <div className="selected-image-stage">
+                {isImageLoading && (
+                  <div className="selected-image-spinner" role="status" aria-live="polite" aria-label="Loading baseline image">
+                    <span className="selected-image-spinner-ring" aria-hidden="true" />
+                  </div>
+                )}
+
+                {imageURL && (
+                  <img
+                    src={imageURL}
+                    alt="Transformer"
+                    className="selected-image"
+                    style={{ visibility: isImageLoading ? "hidden" : "visible" }}
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -152,7 +196,7 @@ export default function TransformerList({
                   <td>{transformer.region}</td>
                   <td>{transformer.type}</td>
                   <td className="transformer-actions">
-                    <button className="view-btn" onClick={() => setSelectedTransformer(transformer)}>View</button>
+                    <button className="view-btn" onClick={() => handleView(transformer)}>View</button>
                     <button className="edit-btn" onClick={() => handleEdit(transformer)}>Edit</button>
                     <button className="delete-btn" onClick={() => handleDelete(transformer)}>Delete</button>
                   </td>
