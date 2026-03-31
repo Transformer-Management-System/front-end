@@ -60,13 +60,17 @@ export async function requestPresignedUploadUrl({ folder, file }) {
     },
   });
 
-  if (!data?.presignedUrl || !data?.objectKey) {
+  const payload = data?.data || data;
+  const presignedUrl = payload?.uploadUrl || payload?.presignedUrl;
+  const objectKey = payload?.objectKey;
+
+  if (!presignedUrl || !objectKey) {
     throw new Error("Backend did not return a valid pre-signed upload URL.");
   }
 
   return {
-    presignedUrl: data.presignedUrl,
-    objectKey: data.objectKey,
+    presignedUrl,
+    objectKey,
   };
 }
 

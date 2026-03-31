@@ -38,15 +38,15 @@ export async function saveTransformerWithOptionalImage(transformerForm) {
     weather: transformerForm.weather,
     location: transformerForm.location,
     baselineUploadDate: transformerForm.baselineUploadDate,
-    baseline_image_key: baselineImageKey,
+    baselineImage: baselineImageKey,
   };
 
   if (!payload.id) {
     delete payload.id;
   }
 
-  if (!payload.baseline_image_key) {
-    delete payload.baseline_image_key;
+  if (!payload.baselineImage) {
+    delete payload.baselineImage;
   }
 
   return apiClient.post("/transformers", payload);

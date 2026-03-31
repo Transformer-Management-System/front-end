@@ -80,8 +80,8 @@ function App() {
           apiClient.get('/transformers'),
           apiClient.get('/inspections'),
         ]);
-        setTransformers(transformersRes.data);
-        setInspections(inspectionsRes.data);
+        setTransformers(transformersRes.data?.data || transformersRes.data);
+        setInspections(inspectionsRes.data?.data || inspectionsRes.data);
       } catch (error) {
         console.error("Failed to fetch data from backend:", error);
         alert("Could not connect to the backend. Please ensure it is running.");
@@ -139,7 +139,8 @@ function App() {
   const handleAddTransformer = async () => {
     setIsSubmittingTransformer(true);
     try {
-      const { data: savedTransformer } = await saveTransformerWithOptionalImage(transformerForm);
+      const response = await saveTransformerWithOptionalImage(transformerForm);
+      const savedTransformer = response.data?.data || response.data;
       setTransformers(prev => {
         const exists = prev.some(t => t.id === savedTransformer.id);
         if (exists) {
@@ -186,13 +187,14 @@ function App() {
     const transformerId = Number.parseInt(inspectionForm.transformer, 10);
     setIsSubmittingInspection(true);
     try {
-      const { data: savedInspection } = await createInspectionWithOptionalImage(
+      const response = await createInspectionWithOptionalImage(
         {
           ...inspectionForm,
           progressStatus: { thermalUpload: "Pending", aiAnalysis: "Pending", review: "Pending" },
         },
         transformerId,
       );
+      const savedInspection = response.data?.data || response.data;
       setInspections(prev => [...prev, savedInspection]);
       setShowAddInspectionModal(false);
       setInspectionForm({
