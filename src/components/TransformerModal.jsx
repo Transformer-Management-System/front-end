@@ -4,6 +4,7 @@ export default function TransformerModal({
   formData,
   handleInputChange,
   handleAddTransformer,
+  isSubmitting = false,
   onClose,
 }) {
   if (!formData) return null;
@@ -19,13 +20,15 @@ export default function TransformerModal({
 
   const isEditing = formData.id !== null;
   let baselineStatus = "No file selected";
-  if (formData.baselineImage) {
+  if (formData.baselineImage instanceof File) {
+    baselineStatus = formData.baselineImage.name;
+  } else if (formData.baselineImage) {
     baselineStatus = isEditing ? "Baseline image uploaded" : "Image selected";
   }
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (isFormValid) {
+    if (isFormValid && !isSubmitting) {
       handleAddTransformer();
     }
   };
@@ -44,6 +47,7 @@ export default function TransformerModal({
                 name="number"
                 placeholder="Enter transformer number"
                 value={formData.number}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               />
             </div>
@@ -55,6 +59,7 @@ export default function TransformerModal({
                 name="region"
                 placeholder="Enter region"
                 value={formData.region}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               />
             </div>
@@ -66,6 +71,7 @@ export default function TransformerModal({
                 name="pole"
                 placeholder="Enter pole number"
                 value={formData.pole}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               />
             </div>
@@ -76,6 +82,7 @@ export default function TransformerModal({
                 id="transformer-type"
                 name="type"
                 value={formData.type}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               >
                 <option value="Bulk">Bulk</option>
@@ -91,6 +98,8 @@ export default function TransformerModal({
                   className="transformer-file-input"
                   type="file"
                   name="baselineImage"
+                  accept="image/*"
+                  disabled={isSubmitting}
                   onChange={handleInputChange}
                 />
                 <label htmlFor="transformer-baseline-image" className="transformer-file-button">
@@ -106,6 +115,7 @@ export default function TransformerModal({
                 id="transformer-weather"
                 name="weather"
                 value={formData.weather || ""}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               >
                 <option value="">Select Weather</option>
@@ -123,6 +133,7 @@ export default function TransformerModal({
                 name="location"
                 placeholder="Enter transformer location"
                 value={formData.location || ""}
+                disabled={isSubmitting}
                 onChange={handleInputChange}
               />
             </div>
@@ -133,11 +144,14 @@ export default function TransformerModal({
           )}
 
           <div className="modal-buttons transformer-modal-actions">
-            <button type="button" className="cancel-btn" onClick={onClose}>
+            <button type="button" className="cancel-btn" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </button>
-            <button className="save-btn" type="submit" disabled={!isFormValid}>
-              Save
+            <button className="save-btn" type="submit" disabled={!isFormValid || isSubmitting}>
+              <span className="transformer-save-label">
+                {isSubmitting && <span className="transformer-button-spinner" aria-hidden="true" />}
+                {isSubmitting ? "Saving..." : "Save"}
+              </span>
             </button>
           </div>
         </form>

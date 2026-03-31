@@ -11,6 +11,10 @@ import SettingsPage from "./components/SettingsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
 import apiClient from "./api/axiosConfig";
+import {
+  createInspectionWithOptionalImage,
+  saveTransformerWithOptionalImage,
+} from "./api/maintenanceApi";
 
 import "./App.css";
 
@@ -34,6 +38,7 @@ function App() {
     weather: "",
     location: "",
   });
+  const [isSubmittingTransformer, setIsSubmittingTransformer] = useState(false);
   const [searchFieldDetails, setSearchFieldDetails] = useState("number");
   const [searchQueryDetails, setSearchQueryDetails] = useState("");
 
@@ -47,15 +52,25 @@ function App() {
     date: "",
     inspector: "",
     notes: "",
-    maintenanceImage: null,
+    inspectionImage: null,
     maintenanceUploadDate: null,
     maintenanceWeather: "Sunny",
   });
+  const [isSubmittingInspection, setIsSubmittingInspection] = useState(false);
   const [searchFieldInspection, setSearchFieldInspection] = useState("");
   const [searchQueryInspection, setSearchQueryInspection] = useState("");
 
   const [showTransformerInspectionsPage, setShowTransformerInspectionsPage] = useState(false);
   const [selectedTransformerForPage, setSelectedTransformerForPage] = useState(null);
+
+  const getErrorMessage = (error, fallbackMessage) => {
+    return (
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      fallbackMessage
+    );
+  };
 
   // --- Load all data from backend on startup ---
   useEffect(() => {
@@ -104,14 +119,15 @@ function App() {
   const handleTransformerChange = (e) => {
     const { name, value, files } = e.target;
     if (name === "baselineImage" && files?.[0]) {
-      const reader = new FileReader();
-      reader.onloadend = () => setTransformerForm({
-        ...transformerForm,
-        baselineImage: reader.result,
+      setTransformerForm(prev => ({
+        ...prev,
+        baselineImage: files[0],
         baselineUploadDate: new Date().toLocaleString(),
-      });
-      reader.readAsDataURL(files[0]);
-    } else { setTransformerForm({ ...transformerForm, [name]: value }); }
+      }));
+      return;
+    }
+
+    setTransformerForm(prev => ({ ...prev, [name]: value }));
   };
 
   const openTransformerModal = (t = null) => {
@@ -121,8 +137,9 @@ function App() {
   };
 
   const handleAddTransformer = async () => {
+    setIsSubmittingTransformer(true);
     try {
-      const { data: savedTransformer } = await apiClient.post('/transformers', transformerForm);
+      const { data: savedTransformer } = await saveTransformerWithOptionalImage(transformerForm);
       setTransformers(prev => {
         const exists = prev.some(t => t.id === savedTransformer.id);
         if (exists) {
@@ -134,6 +151,9 @@ function App() {
       setShowTransformerModal(false);
     } catch (error) {
       console.error("Failed to save transformer:", error);
+      alert(getErrorMessage(error, "Failed to save transformer."));
+    } finally {
+      setIsSubmittingTransformer(false);
     }
   };
 
@@ -147,28 +167,48 @@ function App() {
   };
 
   // --- Inspection handlers ---
-  const handleInspectionChange = (e) => { setInspectionForm({ ...inspectionForm, [e.target.name]: e.target.value }); };
-
-  const handleScheduleInspection = async () => {
-    if (!inspectionForm.transformer || !inspectionForm.date || !inspectionForm.inspector) {
-      alert("Please select a transformer, and fill in both the Date and Inspector fields.");
+  const handleInspectionChange = (e) => {
+    const { name, value, files } = e.target;
+    if (files?.[0]) {
+      setInspectionForm(prev => ({ ...prev, [name]: files[0] }));
       return;
     }
 
-    const transformerId = parseInt(inspectionForm.transformer, 10);
-    const newInspectionData = {
-      ...inspectionForm,
-      transformer: transformerId,
-      progressStatus: { thermalUpload: "Pending", aiAnalysis: "Pending", review: "Pending" },
-    };
+    setInspectionForm(prev => ({ ...prev, [name]: value }));
+  };
 
+  const handleScheduleInspection = async () => {
+    if (!inspectionForm.transformer || !inspectionForm.date || !inspectionForm.inspector || !inspectionForm.inspectionImage) {
+      alert("Please select a transformer, fill in the Date and Inspector fields, and choose an inspection image.");
+      return;
+    }
+
+    const transformerId = Number.parseInt(inspectionForm.transformer, 10);
+    setIsSubmittingInspection(true);
     try {
-      const { data: savedInspection } = await apiClient.post('/inspections', newInspectionData);
+      const { data: savedInspection } = await createInspectionWithOptionalImage(
+        {
+          ...inspectionForm,
+          progressStatus: { thermalUpload: "Pending", aiAnalysis: "Pending", review: "Pending" },
+        },
+        transformerId,
+      );
       setInspections(prev => [...prev, savedInspection]);
       setShowAddInspectionModal(false);
-      setInspectionForm({ transformer: "", date: "", inspector: "", notes: "", maintenanceImage: null, maintenanceUploadDate: null, maintenanceWeather: "Sunny" });
+      setInspectionForm({
+        transformer: "",
+        date: "",
+        inspector: "",
+        notes: "",
+        inspectionImage: null,
+        maintenanceUploadDate: null,
+        maintenanceWeather: "Sunny",
+      });
     } catch (error) {
       console.error("Failed to schedule inspection:", error);
+      alert(getErrorMessage(error, "Failed to schedule inspection."));
+    } finally {
+      setIsSubmittingInspection(false);
     }
   };
 
@@ -257,6 +297,7 @@ function App() {
           formData={transformerForm}
           handleInputChange={handleTransformerChange}
           handleAddTransformer={handleAddTransformer}
+          isSubmitting={isSubmittingTransformer}
           onClose={() => setShowTransformerModal(false)}
         />
       )}
@@ -267,6 +308,7 @@ function App() {
           inspectionForm={inspectionForm}
           handleInspectionChange={handleInspectionChange}
           handleScheduleInspection={handleScheduleInspection}
+          isSubmitting={isSubmittingInspection}
           onClose={() => setShowAddInspectionModal(false)}
           disableTransformerSelect={false}
         />

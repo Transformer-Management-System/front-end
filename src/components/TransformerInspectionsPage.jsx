@@ -1,6 +1,7 @@
 import { useState } from "react";
 import InspectionModal from "./InspectionModal";
 import RecordHistory from "./RecordHistory";
+import { createInspectionWithOptionalImage } from "../api/maintenanceApi";
 import "../styles/TransformerInspectionsPage.css";
 
 export default function TransformerInspectionsPage({
@@ -18,10 +19,22 @@ export default function TransformerInspectionsPage({
     transformer: transformer.id, // preselect current transformer
     date: "",
     inspector: "",
-    notes: ""
+    notes: "",
+    inspectionImage: null,
+    maintenanceWeather: "Sunny",
   });
+  const [isSubmittingInspection, setIsSubmittingInspection] = useState(false);
   const [showRecordHistoryModal, setShowRecordHistoryModal] = useState(false);
   const [recordHistoryInspection, setRecordHistoryInspection] = useState(null);
+
+  const getErrorMessage = (error, fallbackMessage) => {
+    return (
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      fallbackMessage
+    );
+  };
 
   // --- Helper to get current status based on progress ---
   const getInspectionStatus = (inspection) => {
@@ -43,43 +56,46 @@ export default function TransformerInspectionsPage({
     }
   };
 
-  const handleAddInspection = () => {
-    if (!newInspectionForm.date || !newInspectionForm.inspector) {
-      alert("Please fill in both the Date and Inspector fields.");
+  const handleAddInspection = async () => {
+    if (!newInspectionForm.date || !newInspectionForm.inspector || !newInspectionForm.inspectionImage) {
+      alert("Please fill in Date, Inspector, and choose an inspection image.");
       return;
     }
 
-    // Persist the new inspection to the backend so it survives reloads
-    (async () => {
-      const API_URL = 'http://localhost:8000/api';
-      const inspectionPayload = {
-        ...newInspectionForm,
+    setIsSubmittingInspection(true);
+    const inspectionPayload = {
+      ...newInspectionForm,
+      transformer: transformer.id,
+      progressStatus: {
+        thermalUpload: "Pending",
+        aiAnalysis: "Pending",
+        review: "Pending",
+      },
+    };
+
+    try {
+      const { data: savedInspection } = await createInspectionWithOptionalImage(
+        inspectionPayload,
+        transformer.id,
+      );
+
+      setInspections(prev => [...prev, savedInspection]);
+      setFilteredInspections(prev => [...prev, savedInspection]);
+      setShowAddInspectionModal(false);
+      setNewInspectionForm({
         transformer: transformer.id,
-        progressStatus: {
-          thermalUpload: "Pending",
-          aiAnalysis: "Pending",
-          review: "Pending"
-        }
-      };
-
-      try {
-        const res = await fetch(`${API_URL}/inspections`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(inspectionPayload)
-        });
-        if (!res.ok) throw new Error('Failed to save inspection');
-        const savedInspection = await res.json();
-
-        setInspections(prev => [...prev, savedInspection]);
-        setFilteredInspections(prev => [...prev, savedInspection]);
-        setShowAddInspectionModal(false);
-        setNewInspectionForm({ transformer: transformer.id, date: "", inspector: "", notes: "" });
-      } catch (err) {
-        console.error('Error saving inspection:', err);
-        alert('Failed to save inspection to server. Check backend and try again.');
-      }
-    })();
+        date: "",
+        inspector: "",
+        notes: "",
+        inspectionImage: null,
+        maintenanceWeather: "Sunny",
+      });
+    } catch (err) {
+      console.error("Error saving inspection:", err);
+      alert(getErrorMessage(err, "Failed to save inspection to server."));
+    } finally {
+      setIsSubmittingInspection(false);
+    }
   };
 
   const generateInspectionNumber = (transformerNumber, index) => {
@@ -167,10 +183,15 @@ export default function TransformerInspectionsPage({
         <InspectionModal
           transformers={transformers}
           inspectionForm={newInspectionForm}
-          handleInspectionChange={(e) =>
-            setNewInspectionForm({ ...newInspectionForm, [e.target.name]: e.target.value })
-          }
+          handleInspectionChange={(e) => {
+            const { name, value, files } = e.target;
+            setNewInspectionForm(prev => ({
+              ...prev,
+              [name]: files?.[0] || value,
+            }));
+          }}
           handleScheduleInspection={handleAddInspection}
+          isSubmitting={isSubmittingInspection}
           onClose={() => setShowAddInspectionModal(false)}
           disableTransformerSelect={true}
         />
