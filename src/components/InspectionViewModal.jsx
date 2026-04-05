@@ -144,6 +144,7 @@ export default function InspectionViewModal({
       review: inspection.maintenanceImage ? "In Progress" : "Pending"
     }
   );
+  const isAIAnalysisCompleted = progressStatus.aiAnalysis === "Completed";
 
   // --- Completion ---
   const [isCompleted, setIsCompleted] = useState(false);
@@ -151,7 +152,7 @@ export default function InspectionViewModal({
     const updatedInspection = {
       ...inspection,
       maintenanceImage,
-      annotatedImage,
+      annotatedImage: annotatedImageSource,
       baselineWeather,
       baselineUploadDate,
       maintenanceWeather,
@@ -173,7 +174,12 @@ export default function InspectionViewModal({
   };
 
   // ---------------- AI Analysis + Annotations ----------------
-  const [annotatedImage, setAnnotatedImage] = useState(inspection.annotatedImage || null); // data-uri or url
+  const [annotatedImageSource, setAnnotatedImageSource] = useState(
+    inspection.progressStatus?.aiAnalysis === "Completed"
+      ? (inspection.annotatedImage || inspection.maintenanceImage || null)
+      : null
+  );
+  const [annotatedImageURL, setAnnotatedImageURL] = useState(null); // data-uri or resolved url
   const [anomalies, setAnomalies] = useState(inspection.anomalies || []); // {id,x,y,w,h,confidence,comment,source,deleted}
   const [isRunningAI, setIsRunningAI] = useState(false);
   const [aiThreshold, setAiThreshold] = useState(50); // 0–100 scale matching API sliderPercent
@@ -185,16 +191,66 @@ export default function InspectionViewModal({
   const [resizeHandle, setResizeHandle] = useState(null); // Which handle is being dragged
   const [isDragging, setIsDragging] = useState(false); // Track if user is dragging to reposition
   const [showRecordForm, setShowRecordForm] = useState(false);
-  const [viewMode, setViewMode] = useState('zoom'); // 'edit' | 'zoom' — default to zoom for better clarity
+  const [viewMode, setViewMode] = useState('edit'); // 'edit' (static annotated) | 'zoom' (pan/zoom)
 
   // When annotated image becomes available, prefer zoom view by default
   useEffect(() => {
-    if (annotatedImage) {
+    if (isAIAnalysisCompleted && annotatedImageURL) {
       setViewMode('zoom');
       setIsAddingBox(false);
       setNewBoxStart(null);
+    } else if (!isAIAnalysisCompleted) {
+      setViewMode('edit');
     }
-  }, [annotatedImage]);
+  }, [annotatedImageURL, isAIAnalysisCompleted]);
+
+  useEffect(() => {
+    let isActive = true;
+    let objectUrl = null;
+
+    const loadAnnotatedImageUrl = async () => {
+      if (!isAIAnalysisCompleted || !annotatedImageSource) {
+        setAnnotatedImageURL(null);
+        return;
+      }
+
+      if (annotatedImageSource instanceof File || annotatedImageSource instanceof Blob) {
+        objectUrl = URL.createObjectURL(annotatedImageSource);
+        if (isActive) {
+          setAnnotatedImageURL(objectUrl);
+        }
+        return;
+      }
+
+      if (typeof annotatedImageSource === "string") {
+        try {
+          const resolvedUrl = await resolveDisplayImageUrl(annotatedImageSource);
+          if (isActive) {
+            setAnnotatedImageURL(resolvedUrl);
+          }
+        } catch (error) {
+          console.error("Failed to resolve annotated image URL:", error);
+          if (isActive) {
+            setAnnotatedImageURL(null);
+          }
+        }
+        return;
+      }
+
+      if (isActive) {
+        setAnnotatedImageURL(null);
+      }
+    };
+
+    loadAnnotatedImageUrl();
+
+    return () => {
+      isActive = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [annotatedImageSource, isAIAnalysisCompleted]);
 
   // Auto-save annotations when they change
   useEffect(() => {
@@ -404,7 +460,7 @@ export default function InspectionViewModal({
       updateInspection({
         ...inspection,
         maintenanceImage,
-        annotatedImage, // Persist the annotated image
+        annotatedImage: annotatedImageSource, // Persist the annotated image source
         baselineWeather,
         baselineUploadDate,
         maintenanceWeather,
@@ -487,7 +543,7 @@ export default function InspectionViewModal({
   };
   // Run AI: POST to /api/v1/inspections/{id}/analyze
   const handleRunAI = async () => {
-    if (!baselineImage || !maintenanceImage) {
+    if (!baselineImage || !maintenanceImageURL) {
       alert("Please ensure both baseline and maintenance images are available before running AI analysis.");
       return;
     }
@@ -501,38 +557,22 @@ export default function InspectionViewModal({
 
       const data = res.data?.data || res.data;
 
-      // The backend auto-persists all AI anomalies after /analyze.
-      // No annotated overlay image is returned — use the maintenance image as the
-      // annotation canvas background an reload annotations from DB to get real DB IDs.
-      setAnnotatedImage(maintenanceImageURL);
-
-      const reloadRes = await apiClient.get(`/inspections/${inspection.id}/anomalies`);
-      const savedAnnotations = reloadRes.data?.data || [];
-      const reloaded = savedAnnotations.map(a => ({
-        id: a.id,
-        annotationId: a.annotationId,
-        x: a.x,
-        y: a.y,
-        w: a.w,
-        h: a.h,
-        confidence: a.confidence,
-        severity: a.severity,
-        severityScore: a.severityScore,
-        classification: a.classification,
-        area: a.area,
-        centroid: a.centroid,
-        meanDeltaE: a.meanDeltaE,
-        peakDeltaE: a.peakDeltaE,
-        meanHsv: a.meanHsv,
-        elongation: a.elongation,
-        comment: a.comment || '',
-        source: a.source || 'ai',
-        deleted: false,
-        createdAt: a.createdAt,
-        updatedAt: a.updatedAt,
-        userId: a.userId,
+      // map anomalies directly from the AI response payload so we can draw bounding boxes immediately
+      setAnnotatedImageSource(maintenanceImageURL);
+      const mapped = (data.anomalies || []).map(a => ({
+        id: a.id ?? `${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+        x: a.bbox ? a.bbox.x : a.x,
+        y: a.bbox ? a.bbox.y : a.y,
+        w: a.bbox ? a.bbox.width : a.w,
+        h: a.bbox ? a.bbox.height : a.h,
+        confidence: a.confidence ?? null,
+        classification: a.classification ?? 'Unknown',
+        severity: a.severity ?? null,
+        comment: a.comment ?? '',
+        source: 'ai',
+        deleted: false
       }));
-      setAnomalies(reloaded);
+      setAnomalies(mapped);
       setProgressStatus(prev => ({ ...prev, aiAnalysis: "Completed", review: "In Progress", thermalUpload: "Completed" }));
     } catch (err) {
       console.error(err);
@@ -636,7 +676,7 @@ export default function InspectionViewModal({
   // Map anomalies to rendered overlay boxes using absolute positioned divs
   // Note: we assume backend coordinates are in image pixel coordinates of the annotatedImage
   const renderAnomalyOverlays = (key) => { // Add key to ensure re-render when image loads
-    if (!annotatedImage) return null;
+    if (!isAIAnalysisCompleted) return null;
     // We use the naturalWidth/naturalHeight of the <img> to calculate scaling if the displayed size differs
     const imgEl = annotatedImgRef.current;
     return visibleAnomalies.map((a, index) => {
@@ -783,6 +823,10 @@ export default function InspectionViewModal({
     });
   };
 
+  const displayImageSrc = isAIAnalysisCompleted
+    ? (annotatedImageURL || maintenanceImageURL)
+    : maintenanceImageURL;
+
   // ---------------- JSX ----------------
   return (
     <div className="modal-overlay">
@@ -842,19 +886,11 @@ export default function InspectionViewModal({
               <button
                 className="analysis-btn"
                 onClick={handleRunAI}
-                disabled={isRunningAI || !baselineImage || !maintenanceImage}
+                disabled={isRunningAI || !baselineImage || !maintenanceImageURL}
               >
                 {isRunningAI ? "Running AI..." : "Run AI Analysis"}
               </button>
               <div className="ai-controls">
-                {annotatedImage && (
-                  <button
-                    className="toggle-mode-btn"
-                    onClick={() => setViewMode(v => v === 'edit' ? 'zoom' : 'edit')}
-                  >
-                    {viewMode === 'edit' ? 'View (Zoom/Pan)' : 'Edit Annotations'}
-                  </button>
-                )}
                 <button
                   className={isAddingBox ? "cancel-draw-btn" : "add-box-btn"}
                   onClick={() => {
@@ -865,7 +901,7 @@ export default function InspectionViewModal({
                       setIsAddingBox(true);
                     }
                   }}
-                  disabled={!annotatedImage || viewMode !== 'edit'}
+                  disabled={!isAIAnalysisCompleted || !displayImageSrc || viewMode !== 'edit'}
                 >
                   {isAddingBox ? 'Cancel Drawing' : 'Add Manual Box'}
                 </button>
@@ -891,16 +927,63 @@ export default function InspectionViewModal({
               </div>
 
               <div className="image-card">
-                <h4>Thermal Image</h4>
+                <div className="image-card-header">
+                  <h4>{isAIAnalysisCompleted ? "AI Annotated Maintenance Image" : "Maintenance Image"}</h4>
+                  {isAIAnalysisCompleted && (
+                    <button
+                      className={`zoom-toggle-btn${viewMode === 'zoom' ? ' active' : ''}`}
+                      onClick={() => setViewMode(v => v === 'edit' ? 'zoom' : 'edit')}
+                      title={viewMode === 'zoom' ? 'Exit zoom mode' : 'Enable zoom & pan'}
+                    >
+                      {viewMode === 'zoom' ? '🔍 Zoom On' : '🔍 Zoom Off'}
+                    </button>
+                  )}
+                </div>
                 <div className="image-box" style={{ overflow: 'hidden' }}>
-                  <img src={maintenanceImageURL} alt="Thermal" style={{ maxWidth: '100%', objectFit: 'contain' }} />
+                  {displayImageSrc ? (
+                    isAIAnalysisCompleted ? (
+                      viewMode === 'zoom' ? (
+                        <ZoomAnnotatedImage src={displayImageSrc} anomalies={visibleAnomalies} height={380} />
+                      ) : (
+                        <div
+                          className="annotation-container"
+                          style={{
+                            position: 'relative',
+                            transform: `scale(${zoomLevel})`,
+                            transformOrigin: 'top left',
+                          }}
+                        >
+                          <img
+                            ref={annotatedImgRef}
+                            src={displayImageSrc}
+                            alt="Annotated"
+                            onLoad={() => setImageLoaded(Date.now())}
+                            onMouseDown={onAnnotatedMouseDown}
+                            onMouseUp={onAnnotatedMouseUp}
+                            style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+                          />
+                          <div
+                            ref={annotLayerRef}
+                            style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
+                          >
+                            {renderAnomalyOverlays(imageLoaded)}
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <img src={displayImageSrc} alt="Maintenance" style={{ maxWidth: '100%', objectFit: 'contain' }} />
+                    )
+                  ) : (
+                    <img src={maintenanceImageURL} alt="Thermal" style={{ maxWidth: '100%', objectFit: 'contain' }} />
+                  )}
                 </div>
                 <div className="image-info">
                   <p><strong>Date & Time:</strong> {maintenanceUploadDate || inspection.date || "N/A"}</p>
                   <p><strong>Weather:</strong> {maintenanceWeather || "N/A"}</p>
                   <p><strong>Uploader:</strong> {uploader}</p>
-                  <p><strong>Image Type:</strong> Maintenance</p>
+                  <p><strong>Image Type:</strong> {isAIAnalysisCompleted ? 'AI Annotated Maintenance' : 'Maintenance'}</p>
                 </div>
+
               </div>
             </div>
           </div>
@@ -1020,7 +1103,7 @@ export default function InspectionViewModal({
         )}
 
         <div className="inspection-modal-buttons" style={{ marginTop: 12 }}>
-          <button className="generate-record-btn" onClick={() => setShowRecordForm(true)} disabled={anomalies.length === 0} title={anomalies.length === 0 ? 'Run AI analysis first to generate a maintenance record' : 'Generate a maintenance record'}>
+          <button className="generate-record-btn" onClick={() => setShowRecordForm(true)} disabled={!isAIAnalysisCompleted || anomalies.length === 0} title={!isAIAnalysisCompleted ? 'Run AI analysis first to generate a maintenance record' : (anomalies.length === 0 ? 'No anomalies detected yet' : 'Generate a maintenance record')}>
             Generate Maintenance Record
           </button>
           {progressStatus.aiAnalysis === "Completed" && (
@@ -1035,7 +1118,7 @@ export default function InspectionViewModal({
           transformer={transformer}
           inspection={inspection}
           anomalies={anomalies}
-          annotatedImage={annotatedImage}
+          annotatedImage={displayImageSrc}
           onSaved={() => { /* optional post-save hook */ }}
           onClose={() => setShowRecordForm(false)}
         />

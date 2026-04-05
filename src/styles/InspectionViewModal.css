@@ -138,6 +138,56 @@
   text-align: center;
 }
 
+.image-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.image-card-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.zoom-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.zoom-toggle-btn:hover {
+  background: var(--surface-subtle);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.zoom-toggle-btn.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.zoom-toggle-btn.active:hover {
+  opacity: 0.85;
+}
+
 .image-card h4 {
   margin: 0 0 10px;
   font-size: 14px;

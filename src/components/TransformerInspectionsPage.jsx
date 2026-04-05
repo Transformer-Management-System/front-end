@@ -74,10 +74,11 @@ export default function TransformerInspectionsPage({
     };
 
     try {
-      const { data: savedInspection } = await createInspectionWithOptionalImage(
+      const response = await createInspectionWithOptionalImage(
         inspectionPayload,
         transformer.id,
       );
+      const savedInspection = response.data?.data || response.data;
 
       setInspections(prev => [...prev, savedInspection]);
       setFilteredInspections(prev => [...prev, savedInspection]);
