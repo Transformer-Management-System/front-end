@@ -109,17 +109,23 @@ export default function TransformerInspectionsPage({
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <button className="back-btn" onClick={onBack}>← Back</button>
-      <h2>Inspections for {transformer.number}</h2>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
+          Inspections for {transformer.number}
+        </h2>
+      </div>
 
-      <button
-        className="add-inspection-btn"
-        onClick={() => setShowAddInspectionModal(true)}
-      >
-        + Add Inspection
-      </button>
-      {/* Removed transformer-wide records button; access records per inspection */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 1px 3px rgba(15,23,42,0.09)', padding: 20 }}>
+        <div style={{ marginBottom: 14 }}>
+          <button
+            className="add-inspection-btn"
+            onClick={() => setShowAddInspectionModal(true)}
+          >
+            + Add Inspection
+          </button>
+        </div>
 
       <table className="inspection-table">
         <thead>
@@ -178,6 +184,7 @@ export default function TransformerInspectionsPage({
           )}
         </tbody>
       </table>
+      </div>
 
       {showAddInspectionModal && (
         <InspectionModal

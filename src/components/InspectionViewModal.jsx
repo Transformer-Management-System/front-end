@@ -81,26 +81,57 @@ export default function InspectionViewModal({
   }, [baselineImage]);
 
   // --- Maintenance state ---
-  const [maintenanceImage, setMaintenanceImage] = useState(inspection.maintenanceImage || null);
-  const [maintenanceWeather, setMaintenanceWeather] = useState(inspection.maintenanceWeather || "Sunny");
-  const [maintenanceUploadDate, setMaintenanceUploadDate] = useState(inspection.maintenanceUploadDate || null);
-  const [localMaintenanceChanged, setLocalMaintenanceChanged] = useState(false);
-  useEffect(() => {
-    if (!localMaintenanceChanged && transformer?.maintenanceImage) {
-      setMaintenanceImage(transformer.maintenanceImage);
-      setMaintenanceWeather(transformer?.maintenanceWeather || "Sunny");
-      setMaintenanceUploadDate(transformer?.maintenanceUploadDate || null);
-    }
-  }, [transformer, localMaintenanceChanged]);
+  const [maintenanceImage] = useState(inspection.maintenanceImage || null);
+  const [maintenanceWeather] = useState(inspection.maintenanceWeather || "Sunny");
+  const [maintenanceUploadDate] = useState(inspection.maintenanceUploadDate || null);
 
   const [maintenanceImageURL, setMaintenanceImageURL] = useState(null);
   useEffect(() => {
-    if (!maintenanceImage) { setMaintenanceImageURL(null); return; }
-    if (maintenanceImage instanceof File || maintenanceImage instanceof Blob) {
-      const url = URL.createObjectURL(maintenanceImage);
-      setMaintenanceImageURL(url);
-      return () => URL.revokeObjectURL(url);
-    } else { setMaintenanceImageURL(maintenanceImage); }
+    let isActive = true;
+    let objectUrl = null;
+
+    const loadMaintenanceImageUrl = async () => {
+      if (!maintenanceImage) {
+        setMaintenanceImageURL(null);
+        return;
+      }
+
+      if (maintenanceImage instanceof File || maintenanceImage instanceof Blob) {
+        objectUrl = URL.createObjectURL(maintenanceImage);
+        if (isActive) {
+          setMaintenanceImageURL(objectUrl);
+        }
+        return;
+      }
+
+      if (typeof maintenanceImage === "string") {
+        try {
+          const resolvedUrl = await resolveDisplayImageUrl(maintenanceImage);
+          if (isActive) {
+            setMaintenanceImageURL(resolvedUrl);
+          }
+        } catch (error) {
+          console.error("Failed to resolve maintenance image URL:", error);
+          if (isActive) {
+            setMaintenanceImageURL(null);
+          }
+        }
+        return;
+      }
+
+      if (isActive) {
+        setMaintenanceImageURL(null);
+      }
+    };
+
+    loadMaintenanceImageUrl();
+
+    return () => {
+      isActive = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [maintenanceImage]);
 
   const [showBaselinePreview, setShowBaselinePreview] = useState(false);
@@ -145,7 +176,7 @@ export default function InspectionViewModal({
   const [annotatedImage, setAnnotatedImage] = useState(inspection.annotatedImage || null); // data-uri or url
   const [anomalies, setAnomalies] = useState(inspection.anomalies || []); // {id,x,y,w,h,confidence,comment,source,deleted}
   const [isRunningAI, setIsRunningAI] = useState(false);
-  const [aiThreshold, setAiThreshold] = useState(0.5); // New state for AI threshold
+  const [aiThreshold, setAiThreshold] = useState(50); // 0–100 scale matching API sliderPercent
   const [zoomLevel, setZoomLevel] = useState(1); // Re-add state for zoom slider
   const [imageLoaded, setImageLoaded] = useState(0); // State to trigger re-render on image load
   const [hoveredAnomalyId, setHoveredAnomalyId] = useState(null); // For highlighting
@@ -182,20 +213,28 @@ export default function InspectionViewModal({
             if (savedAnnotations.length > 0) {
               // Convert from database format to UI format
               const convertedAnnotations = savedAnnotations.map(a => ({
-                id: a.annotationId || a.id,
+                id: a.id,                       // numeric DB id — used for PUT/DELETE
+                annotationId: a.annotationId,   // stringified DB id returned by API
                 x: a.x,
                 y: a.y,
                 w: a.w,
                 h: a.h,
                 confidence: a.confidence,
                 severity: a.severity,
+                severityScore: a.severityScore,
                 classification: a.classification,
+                area: a.area,
+                centroid: a.centroid,
+                meanDeltaE: a.meanDeltaE,
+                peakDeltaE: a.peakDeltaE,
+                meanHsv: a.meanHsv,
+                elongation: a.elongation,
                 comment: a.comment || '',
                 source: a.source,
-                deleted: a.deleted === 1,
-                created_at: a.created_at,
-                updated_at: a.updated_at,
-                user_id: a.user_id
+                deleted: a.deleted === true,
+                createdAt: a.createdAt,
+                updatedAt: a.updatedAt,
+                userId: a.userId,
               }));
               setAnomalies(convertedAnnotations);
             }
@@ -357,7 +396,7 @@ export default function InspectionViewModal({
     ));
   };
   const manualSeverityOptions = ["Faulty", "Potentially Faulty", "Normal"];
-  const manualClassificationOptions = ["Loose Joint", "Point Overload", "Full Wire Overload", "Other"];
+  const manualClassificationOptions = ["LooseJoint", "PointOverload", "FullWireOverload", "None"];
 
   const handleSave = async () => {
     // Persist inspection info (images & status)
@@ -392,18 +431,16 @@ export default function InspectionViewModal({
               }
             } else if (!anomaly.deleted) {
               const payload = {
-                annotationId: anomaly.id.toString(),
                 x: anomaly.x,
                 y: anomaly.y,
                 w: anomaly.w,
                 h: anomaly.h,
-                confidence: anomaly.confidence || 0.0,
-                severity: anomaly.severity || "UNKNOWN",
-                classification: anomaly.classification || "UNKNOWN",
+                confidence: anomaly.confidence ?? null,
+                severity: anomaly.severity ?? null,
+                classification: anomaly.classification ?? null,
                 comment: anomaly.comment || "",
                 source: anomaly.source || "user",
-                deleted: false,
-                userId: uploader
+                userId: uploader,
               };
               
               if (!anomaly.id.toString().includes('_')) {
@@ -448,39 +485,6 @@ export default function InspectionViewModal({
       reader.readAsDataURL(file);
     }
   };
-  const handleDeleteBaseline = () => {
-    setBaselineImage(null);
-    setBaselineUploadDate(null);
-    setBaselineWeather("Sunny");
-    setLocalBaselineChanged(false);
-    if (updateTransformer && transformer) {
-      updateTransformer({
-        ...transformer,
-        baselineImage: null,
-        baselineUploadDate: null,
-        weather: "Sunny",
-      });
-    }
-  };
-  const handleMaintenanceUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const now = new Date().toLocaleString();
-        setMaintenanceImage(reader.result);
-        setLocalMaintenanceChanged(true);
-        setMaintenanceUploadDate(now); // Set the upload date
-        setProgressStatus({
-          thermalUpload: "Completed",
-          aiAnalysis: "Pending",
-          review: "Pending"
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   // Run AI: POST to /api/v1/inspections/{id}/analyze
   const handleRunAI = async () => {
     if (!baselineImage || !maintenanceImage) {
@@ -496,31 +500,39 @@ export default function InspectionViewModal({
       });
 
       const data = res.data?.data || res.data;
-      
-      // If the backend doesn't return a base64 string, we might just have to fallback to maintenance URL
-      // But let's check if the backend might return annotated data-uri as a fallback or not.
-      // If none, we'll retain the maintenance image as the background.
-      if (data.overlayImage?.path || data.annotatedImage) {
-        setAnnotatedImage(data.annotatedImage || data.overlayImage?.path);
-      } else {
-        setAnnotatedImage(null); // fallback if not provided
-      }
 
-      // map anomalies, ensure ids exist
-      const mapped = (data.anomalies || []).map(a => ({
-        id: a.id ?? `${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-        x: a.bbox ? a.bbox.x : a.x,
-        y: a.bbox ? a.bbox.y : a.y,
-        w: a.bbox ? a.bbox.width : a.w,
-        h: a.bbox ? a.bbox.height : a.h,
-        confidence: a.confidence ?? null,
-        classification: a.classification ?? 'Unknown',
-        severity: a.severity ?? null,
-        comment: a.comment ?? '',
-        source: 'ai',
-        deleted: false
+      // The backend auto-persists all AI anomalies after /analyze.
+      // No annotated overlay image is returned — use the maintenance image as the
+      // annotation canvas background an reload annotations from DB to get real DB IDs.
+      setAnnotatedImage(maintenanceImageURL);
+
+      const reloadRes = await apiClient.get(`/inspections/${inspection.id}/anomalies`);
+      const savedAnnotations = reloadRes.data?.data || [];
+      const reloaded = savedAnnotations.map(a => ({
+        id: a.id,
+        annotationId: a.annotationId,
+        x: a.x,
+        y: a.y,
+        w: a.w,
+        h: a.h,
+        confidence: a.confidence,
+        severity: a.severity,
+        severityScore: a.severityScore,
+        classification: a.classification,
+        area: a.area,
+        centroid: a.centroid,
+        meanDeltaE: a.meanDeltaE,
+        peakDeltaE: a.peakDeltaE,
+        meanHsv: a.meanHsv,
+        elongation: a.elongation,
+        comment: a.comment || '',
+        source: a.source || 'ai',
+        deleted: false,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        userId: a.userId,
       }));
-      setAnomalies(mapped);
+      setAnomalies(reloaded);
       setProgressStatus(prev => ({ ...prev, aiAnalysis: "Completed", review: "In Progress", thermalUpload: "Completed" }));
     } catch (err) {
       console.error(err);
@@ -615,8 +627,8 @@ export default function InspectionViewModal({
     return (
       <div className="progress-step" key={label}>
         <div className="progress-circle" style={{ backgroundColor: color }}></div>
-        <span className="progress-label"><strong>{label}</strong></span>
-        <span className="progress-status"><strong>{state}</strong></span>
+        <span className="progress-label">{label}</span>
+        <span className="progress-status">{state}</span>
       </div>
     );
   };
@@ -746,7 +758,7 @@ export default function InspectionViewModal({
           )}
           
           {/* Display metadata when hovered */}
-          {hoveredAnomalyId === a.id && a.user_id && (
+          {hoveredAnomalyId === a.id && a.userId && (
             <div style={{
               position: 'absolute',
               bottom: '-60px',
@@ -760,8 +772,8 @@ export default function InspectionViewModal({
               pointerEvents: 'none',
               zIndex: 1000
             }}>
-              <div><strong>User:</strong> {a.user_id}</div>
-              {a.updated_at && <div><strong>Modified:</strong> {new Date(a.updated_at).toLocaleString()}</div>}
+              <div><strong>User:</strong> {a.userId}</div>
+              {a.updatedAt && <div><strong>Modified:</strong> {new Date(a.updatedAt).toLocaleString()}</div>}
               {a.source === 'ai' && <div><strong>Source:</strong> AI Detection</div>}
               {a.source === 'user' && <div><strong>Source:</strong> Manual</div>}
             </div>
@@ -775,7 +787,7 @@ export default function InspectionViewModal({
   return (
     <div className="modal-overlay">
       <div className="modal-card">
-        <h1 className="modal-title">Thermal Image</h1>
+        <h2 className="modal-title">Thermal Inspection Analysis</h2>
 
         <div className="modal-flex-horizontal">
           <div className="modal-section">
@@ -802,46 +814,28 @@ export default function InspectionViewModal({
         <div className="modal-flex-horizontal">
           <div className="modal-section">
             <h3>Baseline Image</h3>
-            <div className="weather-select">
-              <label>
-                Weather:
-                <select value={baselineWeather} onChange={e => setBaselineWeather(e.target.value)} disabled={!baselineImage}>
-                  {weatherOptions.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </label>
-            </div>
             {baselineImageURL ? (
               <div className="image-actions">
-                <span>🖼️ Baseline Image uploaded</span>
-                <button onClick={() => setShowBaselinePreview(true)}>👁️</button>
-                <button onClick={handleDeleteBaseline} className="danger-btn">🗑️</button>
+                <span>Baseline image uploaded</span>
+                <button className="icon-btn" onClick={() => setShowBaselinePreview(true)}>Preview</button>
               </div>
             ) : (
               <>
                 <input type="file" id="baselineUpload" onChange={handleBaselineUpload} style={{ display: "none" }} />
-                <label htmlFor="baselineUpload" className="upload-btn">📤 Upload Baseline Image</label>
+                <label htmlFor="baselineUpload" className="upload-btn">Upload Baseline Image</label>
               </>
             )}
           </div>
 
           <div className="modal-section">
             <h3>Thermal Image</h3>
-            <input type="file" id="maintenanceUpload" onChange={handleMaintenanceUpload} style={{ display: "none" }} />
-            <label htmlFor="maintenanceUpload" className="upload-btn">Upload Thermal Image</label>
-            <label style={{ display: 'block', marginTop: 8 }}>
-              Weather:
-              <select value={maintenanceWeather} onChange={e => setMaintenanceWeather(e.target.value)} style={{ marginLeft: 8 }}>
-                {weatherOptions.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-            </label>
-
             <div style={{ marginTop: 12 }}>
               <div className="threshold-slider">
-                <label htmlFor="ai-threshold">Anomaly Detection Threshold: {Math.round(aiThreshold * 100)}%</label>
+                <label htmlFor="ai-threshold">Detection Sensitivity: {Math.round(aiThreshold)}% <span style={{fontSize:'11px',color:'var(--text-muted)',fontWeight:400}}>(0 = most sensitive, 100 = least)</span></label>
                 <input
                   type="range"
                   id="ai-threshold"
-                  min="0" max="1" step="0.05"
+                  min="0" max="100" step="1"
                   value={aiThreshold}
                   onChange={e => setAiThreshold(parseFloat(e.target.value))} />
               </div>
@@ -852,37 +846,38 @@ export default function InspectionViewModal({
               >
                 {isRunningAI ? "Running AI..." : "Run AI Analysis"}
               </button>
-              {annotatedImage && (
+              <div className="ai-controls">
+                {annotatedImage && (
+                  <button
+                    className="toggle-mode-btn"
+                    onClick={() => setViewMode(v => v === 'edit' ? 'zoom' : 'edit')}
+                  >
+                    {viewMode === 'edit' ? 'View (Zoom/Pan)' : 'Edit Annotations'}
+                  </button>
+                )}
                 <button
-                  style={{ marginLeft: 8 }}
-                  onClick={() => setViewMode(v => v === 'edit' ? 'zoom' : 'edit')}
+                  className={isAddingBox ? "cancel-draw-btn" : "add-box-btn"}
+                  onClick={() => {
+                    if (isAddingBox) {
+                      setIsAddingBox(false);
+                      setNewBoxStart(null);
+                    } else {
+                      setIsAddingBox(true);
+                    }
+                  }}
+                  disabled={!annotatedImage || viewMode !== 'edit'}
                 >
-                  {viewMode === 'edit' ? 'View (Zoom/Pan)' : 'Edit Annotations'}
+                  {isAddingBox ? 'Cancel Drawing' : 'Add Manual Box'}
                 </button>
-              )}
-              <button
-                className={isAddingBox ? "cancel-draw-btn" : ""}
-                style={{ marginLeft: 8 }}
-                onClick={() => {
-                  if (isAddingBox) {
-                    setIsAddingBox(false);
-                    setNewBoxStart(null);
-                  } else {
-                    setIsAddingBox(true);
-                  }
-                }}
-                disabled={!annotatedImage || viewMode !== 'edit'}
-              >
-                {isAddingBox ? "Cancel Drawing" : "Add Manual Box"}
-              </button>
-              <button style={{ marginLeft: 8 }} onClick={handleClearAnnotations}>Clear Annotations</button>
+                <button className="clear-annotations-btn" onClick={handleClearAnnotations}>Clear Annotations</button>
+              </div>
             </div>
           </div>
         </div>
 
         {maintenanceImageURL && (
           <div className="modal-section comparison">
-            <h3 className="center-text">{annotatedImage ? "AI Annotated Image Comparison" : "Thermal Image Comparison"}</h3>
+            <h3 className="center-text">Thermal Image Comparison</h3>
             <div className="comparison-flex">
               <div className="image-card">
                 <h4>Baseline Image</h4> 
@@ -896,61 +891,16 @@ export default function InspectionViewModal({
               </div>
 
               <div className="image-card">
-                <h4>{annotatedImage ? "AI Annotated Image" : "Thermal Image"}</h4>
+                <h4>Thermal Image</h4>
                 <div className="image-box" style={{ overflow: 'hidden' }}>
-                  {annotatedImage ? (
-                    viewMode === 'zoom' ? (
-                      <ZoomAnnotatedImage src={annotatedImage} anomalies={visibleAnomalies} height={380} />
-                    ) : (
-                      <div
-                        className="annotation-container"
-                        style={{
-                          position: 'relative',
-                          transform: `scale(${zoomLevel})`,
-                          transformOrigin: 'top left',
-                        }}
-                      >
-                        <img
-                          ref={annotatedImgRef}
-                          src={annotatedImage}
-                          alt="Annotated"
-                          onLoad={() => setImageLoaded(Date.now())}
-                          onMouseDown={onAnnotatedMouseDown}
-                          onMouseUp={onAnnotatedMouseUp}
-                          style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
-                        />
-                        <div
-                          ref={annotLayerRef}
-                          style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
-                        >
-                          {renderAnomalyOverlays(imageLoaded)}
-                        </div>
-                      </div>
-                    )
-                  ) : (
-                    <img src={maintenanceImageURL} alt="Thermal" style={{ maxWidth: '100%', objectFit: 'contain' }} />
-                  )}
+                  <img src={maintenanceImageURL} alt="Thermal" style={{ maxWidth: '100%', objectFit: 'contain' }} />
                 </div>
                 <div className="image-info">
                   <p><strong>Date & Time:</strong> {maintenanceUploadDate || inspection.date || "N/A"}</p>
                   <p><strong>Weather:</strong> {maintenanceWeather || "N/A"}</p>
                   <p><strong>Uploader:</strong> {uploader}</p>
-                  <p><strong>Image Type:</strong> {annotatedImage ? 'AI Annotated' : 'Maintenance'}</p>
+                  <p><strong>Image Type:</strong> Maintenance</p>
                 </div>
-                {annotatedImage && viewMode === 'edit' && (
-                  <div className="zoom-slider-container">
-                    <label htmlFor="zoom-slider">Zoom: {Math.round(zoomLevel * 100)}%</label>
-                    <input
-                      type="range"
-                      id="zoom-slider"
-                      min="1"
-                      max="3"
-                      step="0.1"
-                      value={zoomLevel}
-                      onChange={e => setZoomLevel(parseFloat(e.target.value))}
-                    />
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -983,7 +933,7 @@ export default function InspectionViewModal({
                     <td>{a.source === 'ai' ? 'AI' : 'Manual'}</td>
                     <td>
                       {a.source === 'ai' ? (
-                        <span className={`severity-badge ${a.severity?.toLowerCase()}`}>
+                        <span className={`severity-badge ${a.severity?.toLowerCase().replace(/\s+/g, '-')}`}>
                           {a.severity || 'N/A'}
                         </span>
                       ) : (
@@ -1014,11 +964,21 @@ export default function InspectionViewModal({
                     <td>
                       <div style={{ lineHeight: '1.4' }}>
                         <div><strong>Pos:</strong> ({Math.round(a.x)}, {Math.round(a.y)})</div>
-                        <div><strong>Size:</strong> {Math.round(a.w)}x{Math.round(a.h)} px</div>
-                        {a.source === 'ai' && (
-                          <div>
-                            <strong>Conf:</strong> {a.confidence ? `${Math.round(a.confidence * 100)}%` : 'N/A'}
-                          </div>
+                        <div><strong>Size:</strong> {Math.round(a.w)}×{Math.round(a.h)} px</div>
+                        {a.confidence != null && (
+                          <div><strong>Conf:</strong> {Math.round(a.confidence * 100)}%</div>
+                        )}
+                        {a.severityScore != null && (
+                          <div><strong>Score:</strong> {a.severityScore.toFixed(1)}</div>
+                        )}
+                        {a.peakDeltaE != null && (
+                          <div><strong>pΔE:</strong> {a.peakDeltaE.toFixed(1)}</div>
+                        )}
+                        {a.meanDeltaE != null && (
+                          <div><strong>mΔE:</strong> {a.meanDeltaE.toFixed(1)}</div>
+                        )}
+                        {a.area != null && (
+                          <div><strong>Area:</strong> {a.area} px²</div>
                         )}
                       </div>
                     </td>
@@ -1032,9 +992,9 @@ export default function InspectionViewModal({
                     </td>
                     <td>
                       <div style={{ fontSize: '11px', lineHeight: '1.3' }}>
-                        {a.user_id && <div><strong>User:</strong> {a.user_id}</div>}
-                        {a.created_at && <div><strong>Created:</strong> {new Date(a.created_at).toLocaleString()}</div>}
-                        {a.updated_at && <div><strong>Updated:</strong> {new Date(a.updated_at).toLocaleString()}</div>}
+                        {a.userId && <div><strong>User:</strong> {a.userId}</div>}
+                        {a.createdAt && <div><strong>Created:</strong> {new Date(a.createdAt).toLocaleString()}</div>}
+                        {a.updatedAt && <div><strong>Updated:</strong> {new Date(a.updatedAt).toLocaleString()}</div>}
                       </div>
                     </td>
                     <td>
@@ -1060,7 +1020,7 @@ export default function InspectionViewModal({
         )}
 
         <div className="inspection-modal-buttons" style={{ marginTop: 12 }}>
-          <button onClick={() => setShowRecordForm(true)} disabled={!annotatedImage} title={!annotatedImage ? 'Run AI to generate annotated image first' : 'Generate a maintenance record'}>
+          <button className="generate-record-btn" onClick={() => setShowRecordForm(true)} disabled={anomalies.length === 0} title={anomalies.length === 0 ? 'Run AI analysis first to generate a maintenance record' : 'Generate a maintenance record'}>
             Generate Maintenance Record
           </button>
           {progressStatus.aiAnalysis === "Completed" && (

@@ -1,113 +1,127 @@
-.add-inspection-btn {
-  background-color: black;
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.add-inspection-btn:hover {
-  background-color: rgb(0, 4, 250);
-}
+/* === TRANSFORMER INSPECTIONS PAGE === */
 
 .back-btn {
-  background-color: #02090fff;
-  color: white;
-  padding: 6px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: bold;
-  margin-bottom: 20px;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .back-btn:hover {
-  background-color: rgb(0, 4, 250);
-  color: white;
+  background: var(--surface-subtle);
+  border-color: #cbd5e1;
 }
 
-/* Table styles */
+.add-inspection-btn {
+  background: var(--brand);
+  color: #ffffff;
+  border: 1px solid var(--brand);
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-inspection-btn:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+/* Inspections table */
 .inspection-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 20px;
+  background: var(--surface);
+  margin-top: 16px;
 }
 
-.inspection-table th,
-.inspection-table td {
-  border: 1px solid #ddd;
-  padding: 10px;
+.inspection-table thead th {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-align: left;
+  white-space: nowrap;
 }
 
-.inspection-table thead tr {
-  background-color: #02090fff;
-  color: white;
+.inspection-table tbody td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #e8edf3;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.inspection-table tbody tr:hover {
+  background: #f8fbff;
 }
 
 /* Status labels */
 .status-label {
-  padding: 4px 8px;
-  border-radius: 4px;
-  color: white;
-  font-weight: bold;
   display: inline-block;
-  text-align: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .status-label.pending {
-  background-color: grey;
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .status-label.in-progress {
-  background-color: orange;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .status-label.completed {
-  background-color: green;
-}
-
-
-/* Back button */
-.back-btn {
-  background-color: #555;
-  color: white;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-bottom: 10px;
-}
-
-.back-btn:hover {
-  background-color: #333;
+  background: #dcfce7;
+  color: #166534;
 }
 
 /* Action buttons */
 .inspection-btn {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 4px;
-  color: white;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 6px;
 }
 
 .inspection-btn.view-btn {
-  background-color: black;
-  margin-right: 5px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
 }
 
 .inspection-btn.view-btn:hover {
-  background-color: rgb(0, 4, 250);
+  background: #dbeafe;
 }
 
 .inspection-btn.delete-btn {
-  background-color: black;
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
 }
 
 .inspection-btn.delete-btn:hover {
-  background-color: rgb(0, 4, 250);
+  background: #fecaca;
 }
+
