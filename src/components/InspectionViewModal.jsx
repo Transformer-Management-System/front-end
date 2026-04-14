@@ -875,7 +875,7 @@ export default function InspectionViewModal({
             <h3>Thermal Image</h3>
             <div style={{ marginTop: 12 }}>
               <div className="threshold-slider">
-                <label htmlFor="ai-threshold">Detection Sensitivity: {Math.round(aiThreshold)}% <span style={{fontSize:'11px',color:'var(--text-muted)',fontWeight:400}}>(0 = most sensitive, 100 = least)</span></label>
+                <label htmlFor="ai-threshold">Detection Sensitivity: {Math.round(aiThreshold)}% <span style={{fontSize:'11px',color:'var(--text-muted)',fontWeight:400}}>(higher = more sensitive, lower = less sensitive)</span></label>
                 <input
                   type="range"
                   id="ai-threshold"

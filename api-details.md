@@ -404,6 +404,8 @@ Use `uploadUrl` for the direct `PUT` to S3. Store `objectKey` in the backend as 
 
 The body is optional. If present, it only contains `sliderPercent`.
 
+Higher values are more sensitive; lower values are less sensitive.
+
 ```json
 {
   "sliderPercent": 15.0
