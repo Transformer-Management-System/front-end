@@ -1,5 +1,5 @@
 // InspectionViewModalWithAI.jsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import apiClient from "../api/axiosConfig";
 import { resolveDisplayImageUrl } from "../api/imageUpload";
 import MaintenanceRecordForm from "./MaintenanceRecordForm";
@@ -176,33 +176,16 @@ export default function InspectionViewModal({
   // ---------------- AI Analysis + Annotations ----------------
   const [annotatedImageSource, setAnnotatedImageSource] = useState(
     inspection.progressStatus?.aiAnalysis === "Completed"
-      ? (inspection.annotatedImage || inspection.maintenanceImage || null)
+      ? (inspection.annotatedImageKey || null)
       : null
   );
-  const [annotatedImageURL, setAnnotatedImageURL] = useState(null); // data-uri or resolved url
+  const [annotatedImageURL, setAnnotatedImageURL] = useState(null); // resolved presigned URL of the backend-annotated image
+  const [annotatedImageUnavailable, setAnnotatedImageUnavailable] = useState(false); // true when backend did not upload annotated image
   const [anomalies, setAnomalies] = useState(inspection.anomalies || []); // {id,x,y,w,h,confidence,comment,source,deleted}
   const [isRunningAI, setIsRunningAI] = useState(false);
   const [aiThreshold, setAiThreshold] = useState(50); // 0–100 scale matching API sliderPercent
-  const [zoomLevel, setZoomLevel] = useState(1); // Re-add state for zoom slider
-  const [imageLoaded, setImageLoaded] = useState(0); // State to trigger re-render on image load
-  const [hoveredAnomalyId, setHoveredAnomalyId] = useState(null); // For highlighting
-  const [selectedAnomalyId, setSelectedAnomalyId] = useState(null); // For editing/resizing
-  const [isResizing, setIsResizing] = useState(false); // Track if user is resizing
-  const [resizeHandle, setResizeHandle] = useState(null); // Which handle is being dragged
-  const [isDragging, setIsDragging] = useState(false); // Track if user is dragging to reposition
+  const [hoveredAnomalyId, setHoveredAnomalyId] = useState(null); // For highlighting rows in analysis log
   const [showRecordForm, setShowRecordForm] = useState(false);
-  const [viewMode, setViewMode] = useState('edit'); // 'edit' (static annotated) | 'zoom' (pan/zoom)
-
-  // When annotated image becomes available, prefer zoom view by default
-  useEffect(() => {
-    if (isAIAnalysisCompleted && annotatedImageURL) {
-      setViewMode('zoom');
-      setIsAddingBox(false);
-      setNewBoxStart(null);
-    } else if (!isAIAnalysisCompleted) {
-      setViewMode('edit');
-    }
-  }, [annotatedImageURL, isAIAnalysisCompleted]);
 
   useEffect(() => {
     let isActive = true;
@@ -307,24 +290,6 @@ export default function InspectionViewModal({
   // Filter out deleted anomalies for display
   const visibleAnomalies = anomalies.filter(a => !a.deleted);
 
-  // Canvas / image refs for adding boxes
-  const annotatedImgRef = useRef(null);
-  const annotLayerRef = useRef(null);
-  const [isAddingBox, setIsAddingBox] = useState(false);
-  const [newBoxStart, setNewBoxStart] = useState(null);
-
-  // Helper: convert dataURL to File for upload
-  function dataURLtoFile(dataurl, filename) {
-    if (!dataurl) return null;
-    const arr = dataurl.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) u8arr[n] = bstr.charCodeAt(n);
-    return new File([u8arr], filename, { type: mime });
-  }
-
   // Edit comment for anomaly
   const handleCommentChange = (id, text) => {
     setAnomalies(prev => prev.map(a => a.id === id ? { ...a, comment: text } : a));
@@ -350,92 +315,6 @@ export default function InspectionViewModal({
     setAnomalies(prev => prev.map(a => a.id === id ? { ...a, deleted: false } : a));
   };
 
-  // Handle resize/reposition of annotations
-  const handleAnnotationMouseDown = (e, anomalyId, handle = null) => {
-    e.stopPropagation();
-    setSelectedAnomalyId(anomalyId);
-    
-    if (handle) {
-      // Resizing
-      setIsResizing(true);
-      setResizeHandle(handle);
-    } else {
-      // Dragging/repositioning
-      setIsDragging(true);
-    }
-  };
-
-  const handleAnnotationDrag = (e) => {
-    if (!isDragging && !isResizing) return;
-    if (!selectedAnomalyId) return;
-
-    const { x: mouseX, y: mouseY } = getMousePos(e);
-    
-    setAnomalies(prev => prev.map(a => {
-      if (a.id !== selectedAnomalyId) return a;
-      
-      if (isDragging) {
-        // Reposition - move the entire box
-        const newX = mouseX - a.w / 2;
-        const newY = mouseY - a.h / 2;
-        return { ...a, x: Math.max(0, newX), y: Math.max(0, newY) };
-      } else if (isResizing && resizeHandle) {
-        // Resize based on which handle is being dragged
-        const newAnnot = { ...a };
-        
-        switch(resizeHandle) {
-          case 'nw': // top-left
-            newAnnot.w = a.x + a.w - mouseX;
-            newAnnot.h = a.y + a.h - mouseY;
-            newAnnot.x = mouseX;
-            newAnnot.y = mouseY;
-            break;
-          case 'ne': // top-right
-            newAnnot.w = mouseX - a.x;
-            newAnnot.h = a.y + a.h - mouseY;
-            newAnnot.y = mouseY;
-            break;
-          case 'sw': // bottom-left
-            newAnnot.w = a.x + a.w - mouseX;
-            newAnnot.h = mouseY - a.y;
-            newAnnot.x = mouseX;
-            break;
-          case 'se': // bottom-right
-            newAnnot.w = mouseX - a.x;
-            newAnnot.h = mouseY - a.y;
-            break;
-        }
-        
-        // Ensure minimum size
-        if (newAnnot.w < 10) newAnnot.w = 10;
-        if (newAnnot.h < 10) newAnnot.h = 10;
-        
-        return newAnnot;
-      }
-      
-      return a;
-    }));
-  };
-
-  const handleAnnotationMouseUp = () => {
-    setIsDragging(false);
-    setIsResizing(false);
-    setResizeHandle(null);
-  };
-
-  // Add mouse move and mouse up listeners for drag/resize
-  useEffect(() => {
-    if (isDragging || isResizing) {
-      window.addEventListener('mousemove', handleAnnotationDrag);
-      window.addEventListener('mouseup', handleAnnotationMouseUp);
-      
-      return () => {
-        window.removeEventListener('mousemove', handleAnnotationDrag);
-        window.removeEventListener('mouseup', handleAnnotationMouseUp);
-      };
-    }
-  }, [isDragging, isResizing, selectedAnomalyId, resizeHandle]);
-  
   // --- Save handler (will also save annotations if present) ---
   const handleManualSeverityChange = (id, newSeverity) => {
     setAnomalies(prev => prev.map(a =>
@@ -457,10 +336,11 @@ export default function InspectionViewModal({
   const handleSave = async () => {
     // Persist inspection info (images & status)
     if (updateInspection) {
-      updateInspection({
+      await updateInspection({
         ...inspection,
         maintenanceImage,
-        annotatedImage: annotatedImageSource, // Persist the annotated image source
+        annotatedImage: annotatedImageSource,
+        annotatedImageKey: annotatedImageSource,  // persist the S3 key for reload
         baselineWeather,
         baselineUploadDate,
         maintenanceWeather,
@@ -557,8 +437,16 @@ export default function InspectionViewModal({
 
       const data = res.data?.data || res.data;
 
-      // map anomalies directly from the AI response payload so we can draw bounding boxes immediately
-      setAnnotatedImageSource(maintenanceImageURL);
+      // Use the backend-generated annotated image key; fall back gracefully if upload did not succeed
+      if (data.annotatedImageKey) {
+        setAnnotatedImageUnavailable(false);
+        setAnnotatedImageSource(data.annotatedImageKey);
+      } else {
+        setAnnotatedImageUnavailable(true);
+        setAnnotatedImageSource(null);
+      }
+
+      // Map anomalies from the response into state for the analysis log and future manual edits/saves
       const mapped = (data.anomalies || []).map(a => ({
         id: a.id ?? `${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
         x: a.bbox ? a.bbox.x : a.x,
@@ -568,6 +456,13 @@ export default function InspectionViewModal({
         confidence: a.confidence ?? null,
         classification: a.classification ?? 'Unknown',
         severity: a.severity ?? null,
+        severityScore: a.severityScore ?? null,
+        area: a.area ?? null,
+        centroid: a.centroid ?? null,
+        meanDeltaE: a.meanDeltaE ?? null,
+        peakDeltaE: a.peakDeltaE ?? null,
+        meanHsv: a.meanHsv ?? null,
+        elongation: a.elongation ?? null,
         comment: a.comment ?? '',
         source: 'ai',
         deleted: false
@@ -581,78 +476,6 @@ export default function InspectionViewModal({
     } finally {
       setIsRunningAI(false);
     }
-  };
-
-  // Add manual box (click-drag on annotated image)
-  const getElementOffset = (el) => {
-    const rect = el.getBoundingClientRect();
-    return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
-  };
-
-  const onAnnotatedMouseDown = (e) => {
-    if (!isAddingBox) return;
-    e.preventDefault(); // This is the key fix: prevent default browser drag behavior.
-    const img = annotatedImgRef.current;
-    if (!img) return;
-
-    const { x, y } = getMousePos(e);
-    setNewBoxStart({ x, y });
-  };
-
-  // Helper to get true mouse position on the image, accounting for object-fit
-  const getMousePos = (e) => {
-    const img = annotatedImgRef.current;
-    if (!img || !img.naturalWidth) return { x: 0, y: 0 }; // Guard against no image
-    const rect = img.getBoundingClientRect();
-
-    // Calculate the scale of the image within its container due to object-fit: contain
-    const scale = Math.min(
-      rect.width / img.naturalWidth,
-      rect.height / img.naturalHeight
-    );
-
-    // Calculate the actual rendered dimensions of the image
-    const renderedWidth = img.naturalWidth * scale;
-    const renderedHeight = img.naturalHeight * scale;
-
-    // Calculate the offset (letterboxing) from the top-left of the container
-    const offsetX = (rect.width - renderedWidth) / 2;
-    const offsetY = (rect.height - renderedHeight) / 2;
-
-    // Get mouse position relative to the actual rendered image
-    const imageX = e.clientX - rect.left - offsetX;
-    const imageY = e.clientY - rect.top - offsetY;
-
-    // Scale the mouse position back to the natural image dimensions
-    return { x: imageX / scale, y: imageY / scale };
-  };
-
-  const onAnnotatedMouseUp = (e) => {
-    if (!isAddingBox || !newBoxStart) return;
-    const img = annotatedImgRef.current;
-    if (!img) { setIsAddingBox(false); setNewBoxStart(null); return; }
-
-    const { x: finalX, y: finalY } = getMousePos(e);
-
-    const width = Math.abs(finalX - newBoxStart.x);
-    const height = Math.abs(finalY - newBoxStart.y);
-
-    if (width > 5 && height > 5) {
-      const x = Math.min(newBoxStart.x, finalX);
-      const y = Math.min(newBoxStart.y, finalY);
-      const newAnom = {
-        id: `user_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-        x, y, w: width, h: height,
-        severity: null,
-        classification: '',
-        comment: '',
-        source: 'user',
-        deleted: false
-      };
-      setAnomalies(prev => [...prev, newAnom]);
-    }
-    setIsAddingBox(false);
-    setNewBoxStart(null);
   };
 
   // Remove all annotations (utility)
@@ -673,159 +496,11 @@ export default function InspectionViewModal({
     );
   };
 
-  // Map anomalies to rendered overlay boxes using absolute positioned divs
-  // Note: we assume backend coordinates are in image pixel coordinates of the annotatedImage
-  const renderAnomalyOverlays = (key) => { // Add key to ensure re-render when image loads
-    if (!isAIAnalysisCompleted) return null;
-    // We use the naturalWidth/naturalHeight of the <img> to calculate scaling if the displayed size differs
-    const imgEl = annotatedImgRef.current;
-    return visibleAnomalies.map((a, index) => {
-      // This robust logic correctly scales natural coordinates to display coordinates, accounting for object-fit
-      if (!imgEl || !imgEl.naturalWidth) return null;
-
-      const imgScale = Math.min(
-        imgEl.clientWidth / imgEl.naturalWidth,
-        imgEl.clientHeight / imgEl.naturalHeight
-      );
-
-      const offsetX = (imgEl.clientWidth - (imgEl.naturalWidth * imgScale)) / 2;
-      const offsetY = (imgEl.clientHeight - (imgEl.naturalHeight * imgScale)) / 2;
-
-      const left = (a.x * imgScale) + offsetX;
-      const top = (a.y * imgScale) + offsetY;
-      const width = a.w * imgScale;
-      const height = a.h * imgScale;
-
-      const borderColor = a.severity === 'Faulty' ? 'rgba(220, 53, 69, 0.9)' : (a.severity === 'Potentially Faulty' ? 'rgba(253, 126, 20, 0.9)' : 'rgba(255, 200, 0, 0.95)');
-      const isSelected = selectedAnomalyId === a.id;
-      
-      return (
-        // The parent div for an annotation box and its label
-        <div
-          key={a.id}
-          className="annotation-box"
-          style={{
-            position: 'absolute',
-            left: `${left}px`, // Scaled coordinates
-            top: `${top}px`,
-            width: `${width}px`,
-            height: `${height}px`,
-            boxSizing: 'border-box',
-            pointerEvents: 'auto', // Enable hover events
-            cursor: isDragging ? 'grabbing' : 'grab'
-          }}
-          onMouseEnter={() => setHoveredAnomalyId(a.id)}
-          onMouseLeave={() => setHoveredAnomalyId(null)}
-          onMouseDown={(e) => handleAnnotationMouseDown(e, a.id)}
-        >
-          {/* The visible box */}
-          <div style={{ 
-            width: '100%', 
-            height: '100%', 
-            border: `${isSelected ? '3px' : '2px'} solid ${borderColor}`,
-            boxShadow: isSelected ? '0 0 10px rgba(0,0,0,0.5)' : 'none'
-          }} />
-          
-          {/* The number label */}
-          <div className="annotation-tag" style={{ backgroundColor: borderColor }}>
-            {index + 1}
-          </div>
-          
-          {/* Resize handles - only show when selected */}
-          {isSelected && (
-            <>
-              <div 
-                className="resize-handle resize-nw" 
-                style={{
-                  position: 'absolute',
-                  top: '-4px',
-                  left: '-4px',
-                  width: '8px',
-                  height: '8px',
-                  background: 'white',
-                  border: '2px solid ' + borderColor,
-                  cursor: 'nw-resize',
-                  borderRadius: '50%'
-                }}
-                onMouseDown={(e) => handleAnnotationMouseDown(e, a.id, 'nw')}
-              />
-              <div 
-                className="resize-handle resize-ne"
-                style={{
-                  position: 'absolute',
-                  top: '-4px',
-                  right: '-4px',
-                  width: '8px',
-                  height: '8px',
-                  background: 'white',
-                  border: '2px solid ' + borderColor,
-                  cursor: 'ne-resize',
-                  borderRadius: '50%'
-                }}
-                onMouseDown={(e) => handleAnnotationMouseDown(e, a.id, 'ne')}
-              />
-              <div 
-                className="resize-handle resize-sw"
-                style={{
-                  position: 'absolute',
-                  bottom: '-4px',
-                  left: '-4px',
-                  width: '8px',
-                  height: '8px',
-                  background: 'white',
-                  border: '2px solid ' + borderColor,
-                  cursor: 'sw-resize',
-                  borderRadius: '50%'
-                }}
-                onMouseDown={(e) => handleAnnotationMouseDown(e, a.id, 'sw')}
-              />
-              <div 
-                className="resize-handle resize-se"
-                style={{
-                  position: 'absolute',
-                  bottom: '-4px',
-                  right: '-4px',
-                  width: '8px',
-                  height: '8px',
-                  background: 'white',
-                  border: '2px solid ' + borderColor,
-                  cursor: 'se-resize',
-                  borderRadius: '50%'
-                }}
-                onMouseDown={(e) => handleAnnotationMouseDown(e, a.id, 'se')}
-              />
-            </>
-          )}
-          
-          {/* Display metadata when hovered */}
-          {hoveredAnomalyId === a.id && a.userId && (
-            <div style={{
-              position: 'absolute',
-              bottom: '-60px',
-              left: '0',
-              background: 'rgba(0,0,0,0.8)',
-              color: 'white',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}>
-              <div><strong>User:</strong> {a.userId}</div>
-              {a.updatedAt && <div><strong>Modified:</strong> {new Date(a.updatedAt).toLocaleString()}</div>}
-              {a.source === 'ai' && <div><strong>Source:</strong> AI Detection</div>}
-              {a.source === 'user' && <div><strong>Source:</strong> Manual</div>}
-            </div>
-          )}
-        </div>
-      );
-    });
-  };
-
   const displayImageSrc = isAIAnalysisCompleted
     ? (annotatedImageURL || maintenanceImageURL)
     : maintenanceImageURL;
+
+
 
   // ---------------- JSX ----------------
   return (
@@ -891,20 +566,6 @@ export default function InspectionViewModal({
                 {isRunningAI ? "Running AI..." : "Run AI Analysis"}
               </button>
               <div className="ai-controls">
-                <button
-                  className={isAddingBox ? "cancel-draw-btn" : "add-box-btn"}
-                  onClick={() => {
-                    if (isAddingBox) {
-                      setIsAddingBox(false);
-                      setNewBoxStart(null);
-                    } else {
-                      setIsAddingBox(true);
-                    }
-                  }}
-                  disabled={!isAIAnalysisCompleted || !displayImageSrc || viewMode !== 'edit'}
-                >
-                  {isAddingBox ? 'Cancel Drawing' : 'Add Manual Box'}
-                </button>
                 <button className="clear-annotations-btn" onClick={handleClearAnnotations}>Clear Annotations</button>
               </div>
             </div>
@@ -916,8 +577,10 @@ export default function InspectionViewModal({
             <h3 className="center-text">Thermal Image Comparison</h3>
             <div className="comparison-flex">
               <div className="image-card">
-                <h4>Baseline Image</h4> 
-                <div className="image-box"><img src={baselineImageURL} alt="Baseline" style={{ maxWidth: '100%' }} /></div>
+                <div className="image-card-header">
+                  <h4>Baseline Image</h4>
+                </div>
+                <div className="image-box"><img src={baselineImageURL} alt="Baseline" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /></div>
                 <div className="image-info">
                   <p><strong>Date & Time:</strong> {baselineUploadDate || "N/A"}</p>
                   <p><strong>Weather:</strong> {baselineWeather}</p>
@@ -929,53 +592,14 @@ export default function InspectionViewModal({
               <div className="image-card">
                 <div className="image-card-header">
                   <h4>{isAIAnalysisCompleted ? "AI Annotated Maintenance Image" : "Maintenance Image"}</h4>
-                  {isAIAnalysisCompleted && (
-                    <button
-                      className={`zoom-toggle-btn${viewMode === 'zoom' ? ' active' : ''}`}
-                      onClick={() => setViewMode(v => v === 'edit' ? 'zoom' : 'edit')}
-                      title={viewMode === 'zoom' ? 'Exit zoom mode' : 'Enable zoom & pan'}
-                    >
-                      {viewMode === 'zoom' ? '🔍 Zoom On' : '🔍 Zoom Off'}
-                    </button>
-                  )}
                 </div>
                 <div className="image-box" style={{ overflow: 'hidden' }}>
-                  {displayImageSrc ? (
-                    isAIAnalysisCompleted ? (
-                      viewMode === 'zoom' ? (
-                        <ZoomAnnotatedImage src={displayImageSrc} anomalies={visibleAnomalies} height={380} />
-                      ) : (
-                        <div
-                          className="annotation-container"
-                          style={{
-                            position: 'relative',
-                            transform: `scale(${zoomLevel})`,
-                            transformOrigin: 'top left',
-                          }}
-                        >
-                          <img
-                            ref={annotatedImgRef}
-                            src={displayImageSrc}
-                            alt="Annotated"
-                            onLoad={() => setImageLoaded(Date.now())}
-                            onMouseDown={onAnnotatedMouseDown}
-                            onMouseUp={onAnnotatedMouseUp}
-                            style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
-                          />
-                          <div
-                            ref={annotLayerRef}
-                            style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
-                          >
-                            {renderAnomalyOverlays(imageLoaded)}
-                          </div>
-                        </div>
-                      )
-                    ) : (
-                      <img src={displayImageSrc} alt="Maintenance" style={{ maxWidth: '100%', objectFit: 'contain' }} />
-                    )
-                  ) : (
-                    <img src={maintenanceImageURL} alt="Thermal" style={{ maxWidth: '100%', objectFit: 'contain' }} />
+                  {annotatedImageUnavailable && (
+                    <div className="annotated-image-warning" style={{ padding: '6px 10px', marginBottom: '6px', backgroundColor: '#fff3cd', color: '#856404', borderRadius: '4px', fontSize: '13px' }}>
+                      Annotated image could not be loaded from server. Showing original maintenance image.
+                    </div>
                   )}
+                  <ZoomAnnotatedImage src={displayImageSrc} anomalies={[]} height={380} />
                 </div>
                 <div className="image-info">
                   <p><strong>Date & Time:</strong> {maintenanceUploadDate || inspection.date || "N/A"}</p>

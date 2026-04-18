@@ -14,6 +14,7 @@ import apiClient from "./api/axiosConfig";
 import {
   createInspectionWithOptionalImage,
   saveTransformerWithOptionalImage,
+  normalizeInspectionForUi,
 } from "./api/maintenanceApi";
 
 import "./App.css";
@@ -93,7 +94,7 @@ function App() {
           transformerList.map(async (transformer) => {
             const inspectionsRes = await apiClient.get(`/transformers/${transformer.id}/inspections`);
             const loadedInspections = inspectionsRes.data?.data || inspectionsRes.data || [];
-            return Array.isArray(loadedInspections) ? loadedInspections : [];
+            return Array.isArray(loadedInspections) ? loadedInspections.map(normalizeInspectionForUi) : [];
           })
         );
 
@@ -259,7 +260,13 @@ function App() {
   const handleUpdateInspection = async (updatedInspection) => {
     const res = await apiClient.put(`/inspections/${updatedInspection.id}`, updatedInspection);
     const saved = res.data?.data || res.data;
-    setInspections(inspections.map(i => (i.id === saved.id ? saved : i)));
+    // Merge client-side annotatedImageKey in case the backend doesn't echo it back
+    const merged = {
+      ...saved,
+      annotatedImageKey: saved.annotatedImageKey || updatedInspection.annotatedImageKey || null,
+    };
+    const normalized = normalizeInspectionForUi(merged);
+    setInspections(prev => prev.map(i => (i.id === normalized.id ? normalized : i)));
   };
   const handleUpdateTransformer = async (updatedTransformer) => {
     const res = await apiClient.put(`/transformers/${updatedTransformer.id}`, updatedTransformer);

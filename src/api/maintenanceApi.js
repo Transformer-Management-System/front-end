@@ -67,6 +67,17 @@ const normalizeInspectionProgressStatus = (inspection) => {
     }
   }
 
+  // Use the top-level status field from the backend InspectionResponse
+  const topLevelStatus = inspection?.status?.trim().toUpperCase();
+  if (topLevelStatus === "DONE" || topLevelStatus === "COMPLETED") {
+    return COMPLETED_UI_PROGRESS_STATUS;
+  }
+
+  // If the backend has already stored an annotated image key, AI analysis ran
+  if (inspection?.annotatedImageKey) {
+    return COMPLETED_UI_PROGRESS_STATUS;
+  }
+
   if (inspection?.maintenanceImage) {
     return IN_PROGRESS_UI_PROGRESS_STATUS;
   }
@@ -74,7 +85,7 @@ const normalizeInspectionProgressStatus = (inspection) => {
   return DEFAULT_UI_PROGRESS_STATUS;
 };
 
-const normalizeInspectionForUi = (inspection) => {
+export const normalizeInspectionForUi = (inspection) => {
   if (!inspection || typeof inspection !== "object") {
     return inspection;
   }

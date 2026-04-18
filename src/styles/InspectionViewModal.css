@@ -127,6 +127,7 @@
 /* Image comparison */
 .comparison-flex {
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   gap: 24px;
   flex-wrap: wrap;
